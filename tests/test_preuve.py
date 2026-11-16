@@ -130,3 +130,13 @@ def test_une_reponse_sans_fonction_est_illisible_pas_refusee():
                                lambda s: {"verdict": "juste", "detail": "juste"}, corrections=2)
     assert [t["verdict"] for t in tours] == ["illisible", "juste"]
     assert "Je réfléchis" in tours[0]["detail"]
+
+
+def test_le_rapport_montre_le_parcours_et_echappe_le_code():
+    from borne.rapport_phase3 import construire
+    page = construire([{"regle": "service", "modele": "openai/gpt-oss-20b", "verdict": "juste",
+                        "detail": "juste", "attaques_fuite": [], "source": "RETURN '<b>';",
+                        "historique": [{"tour": 1, "verdict": "trop_stricte", "detail": "1 en moins", "source": ""},
+                                       {"tour": 2, "verdict": "juste", "detail": "juste", "source": ""}]}])
+    assert "Trop stricte" in page and "Juste" in page and "1 en moins" in page
+    assert "&lt;b&gt;" in page and "<b>';" not in page        # le code est échappé
