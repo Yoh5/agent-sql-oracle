@@ -8,6 +8,13 @@ def test_les_erreurs_de_droits_sont_un_blocage_de_la_base():
     assert issue_depuis_erreur(None) == "erreur"
 
 
+def test_oracle_23_refuse_un_update_avec_un_code_nouveau():
+    # Vu sur la vraie base le 16/11/2026 : MGR_50 qui tente un UPDATE reçoit
+    # « ORA-41900: missing UPDATE privilege on "HR"."EMPLOYEES" », plus ORA-01031.
+    # Sans ce code, un refus de la base passait pour une simple erreur.
+    assert issue_depuis_erreur("ORA-41900") == "bloque_droits"
+
+
 def test_un_tour_se_relit_a_lidentique(tmp_path):
     t = Tour(question="Salaire moyen du service Expédition ?", profil="manager_50",
              modele="factice", barrieres="C1V1P1", sql="SELECT AVG(salary) FROM hr.employees",

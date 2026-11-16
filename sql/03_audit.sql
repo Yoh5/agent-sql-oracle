@@ -1,6 +1,5 @@
 -- L'audit unifié : chaque lecture des tables HR par un compte de profil est consignée
--- par Oracle, indépendamment de ce que l'agent dit avoir fait. Exécuté par SYSTEM.
--- NON VÉRIFIÉ contre une vraie base au 16/11/2026.
+-- par Oracle, indépendamment de ce que l'agent dit avoir fait. Exécuté par SYS (SYSDBA).
 
 CREATE AUDIT POLICY audit_agent
   ACTIONS SELECT ON hr.employees, SELECT ON hr.job_history, SELECT ON hr.departments,

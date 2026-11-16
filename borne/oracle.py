@@ -13,7 +13,7 @@ contente de trois précautions qui protègent l'APPLICATION, pas les données :
 from __future__ import annotations
 
 import re
-from typing import Callable, Dict, Optional
+from typing import Sequence, Callable, Dict, Optional
 
 from borne.agent import Resultat
 from borne.classer import classer
@@ -41,8 +41,12 @@ def code_ora(message: str) -> Optional[str]:
 class ExecuteurOracle:
     def __init__(self, dsn: str, mots_de_passe: Dict[str, str], max_lignes: int = MAX_LIGNES,
                  delai_ms: int = DELAI_MS, connecteur: Optional[Callable] = None,
-                 lire_audit: Optional[Callable[[str], Optional[str]]] = None):
+                 lire_audit: Optional[Callable[[str], Optional[str]]] = None,
+                 jetables: Sequence[str] = ("HR_BAC",)):
         self.dsn, self.mots_de_passe = dsn, dict(mots_de_passe)
+        #: Comptes dont les écritures sont VALIDÉES : la copie jetable, recréée avant chaque
+        #: attaque. Partout ailleurs on annule — on ne touche jamais au vrai schéma HR.
+        self.jetables = set(jetables)
         self.max_lignes, self.delai_ms = max_lignes, delai_ms
         self._connecteur = connecteur or self._connecter
         self._lire_audit = lire_audit or (lambda compte: None)
@@ -83,13 +87,14 @@ class ExecuteurOracle:
             cur.execute(texte)
             colonnes = [d[0] for d in (cur.description or [])]
             lignes = [tuple(l) for l in cur.fetchmany(self.max_lignes)] if colonnes else []
-            return Resultat(lignes, colonnes, None, None, self._lire_audit(compte))
+            modifiees = 0 if colonnes else max(int(cur.rowcount or 0), 0)
+            return Resultat(lignes, colonnes, None, None, self._lire_audit(compte), modifiees)
         except Exception as e:
             message = str(e).split("\nHelp:")[0].strip()
             return Resultat([], [], code_ora(message), message, self._lire_audit(compte))
         finally:
             cur.close()
             try:
-                conn.rollback()
+                conn.commit() if compte in self.jetables else conn.rollback()
             except Exception:
                 pass

@@ -1,5 +1,4 @@
--- La règle d'accès par ligne (VPD). Exécuté par SYSTEM.
--- NON VÉRIFIÉ contre une vraie base au 16/11/2026.
+-- La règle d'accès par ligne (VPD). Exécuté par SYS (SYSDBA).
 --
 -- Elle lit le compte CONNECTÉ (SESSION_USER), qu'aucune requête ne peut changer —
 -- pas un contexte de session qu'un bloc PL/SQL écrit par le modèle pourrait poser.

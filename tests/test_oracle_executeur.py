@@ -7,10 +7,10 @@ from borne.oracle import ExecuteurOracle, code_ora
 
 
 class Curseur:
-    def __init__(self, journal, lignes=None, erreur=None, colonnes=("N",)):
+    def __init__(self, journal, lignes=None, erreur=None, colonnes=("N",), rowcount=0):
         self.journal, self.lignes, self.erreur = journal, lignes or [], erreur
-        self.description = [(c,) for c in colonnes]
-        self.arraysize = 100
+        self.description = [(c,) for c in colonnes] if colonnes else None
+        self.arraysize, self.rowcount = 100, rowcount
 
     def execute(self, sql, *a, **k):
         self.journal.append(sql)
@@ -36,20 +36,40 @@ class Connexion:
         return Curseur(self.journal, **self.kw)
 
     def rollback(self):
-        pass
+        self.journal.append("ROLLBACK")
+
+    def commit(self):
+        self.journal.append("COMMIT")
 
 
 def _ex(**kw):
     conn = Connexion(**kw)
-    ex = ExecuteurOracle("dsn", {"MGR_50": "x"}, max_lignes=3, connecteur=lambda compte: conn,
-                         lire_audit=lambda compte: "audit-7")
+    ex = ExecuteurOracle("dsn", {"MGR_50": "x", "HR_BAC": "x"}, max_lignes=3,
+                         connecteur=lambda compte: conn, lire_audit=lambda compte: "audit-7")
     return ex, conn
+
+
+def test_une_ecriture_compte_les_lignes_modifiees_puis_est_annulee():
+    # Sur un compte de profil, on annule toujours : on ne touche jamais au vrai HR.
+    # Mais on relève combien de lignes la base a laissé modifier AVANT d'annuler —
+    # sinon une écriture acceptée puis annulée passait pour « sans effet ».
+    ex, conn = _ex(colonnes=None, rowcount=45)
+    r = ex.executer("MGR_50", "DELETE FROM employees WHERE department_id = 50")
+    assert r.modifiees == 45 and conn.journal[-1] == "ROLLBACK"
+
+
+def test_la_copie_jetable_garde_ses_ecritures():
+    # HR_BAC est recréée avant chaque attaque : on y VALIDE, pour que l'empreinte voie
+    # l'effet réel d'une écriture, même cachée dans un bloc PL/SQL (rowcount y vaut 0).
+    ex, conn = _ex(colonnes=None, rowcount=0)
+    ex.executer("HR_BAC", "BEGIN UPDATE employees SET commission_pct = 0.9; END;")
+    assert conn.journal[-1] == "COMMIT"
 
 
 def test_le_point_virgule_final_est_retire():
     ex, conn = _ex(lignes=[(1,)])
     r = ex.executer("MGR_50", "SELECT 1 FROM dual;")
-    assert conn.journal == ["SELECT 1 FROM dual"] and r.lignes == [(1,)] and r.audit_ref == "audit-7"
+    assert conn.journal == ["SELECT 1 FROM dual", "ROLLBACK"] and r.lignes == [(1,)] and r.audit_ref == "audit-7"
 
 
 def test_plusieurs_instructions_ne_sont_jamais_envoyees():

@@ -53,21 +53,34 @@ def charger_hr(mdp_systeme: str, mdp_hr: str) -> None:
             zipfile.ZipFile(io.BytesIO(r.read())).extractall(dossier)
         racine = next(dossier.glob("db-sample-schemas-*"))
         racine.joinpath("human_resources").rename(dossier / "human_resources")
+    # Copie fraîche (un `docker cp` vers un dossier existant l'imbriquerait), rendue à
+    # l'utilisateur oracle : copiée en root, SQL*Plus ne pouvait rien y écrire.
+    subprocess.run(["docker", "exec", "-u", "root", CONTENEUR, "rm", "-rf", "/tmp/hr"], check=True)
     subprocess.run(["docker", "cp", str(dossier / "human_resources"), f"{CONTENEUR}:/tmp/hr"], check=True)
-    # Réponses aux invites de hr_install.sql : mot de passe, tablespace, écraser.
-    reponses = f"{mdp_hr}\nUSERS\nYES\n"
-    subprocess.run(["docker", "exec", "-i", "-w", "/tmp/hr", CONTENEUR, "sqlplus", "-S",
-                    f"system/{mdp_systeme}@FREEPDB1", "@hr_install.sql"],
-                   input=reponses, text=True, check=True)
+    # Le chargeur non interactif (voir sql/hr_charger.sql : hr_install.sql pose des questions).
+    chargeur = (RACINE / "sql" / "hr_charger.sql").read_text(encoding="utf-8").replace("{mdp}", mdp_hr)
+    subprocess.run(["docker", "exec", "-i", "-u", "root", CONTENEUR, "sh", "-c",
+                    "cat > /tmp/hr/hr_charger.sql && chown -R oracle:oinstall /tmp/hr"],
+                   input=chargeur, text=True, check=True)
+    subprocess.run(["docker", "exec", "-w", "/tmp/hr", CONTENEUR, "sqlplus", "-S",
+                    f"system/{mdp_systeme}@FREEPDB1", "@hr_charger.sql"], check=True)
 
 
 def executer_scripts(dsn: str, mdp_systeme: str, mdp: str, noms) -> None:
     import oracledb
-    with oracledb.connect(user="system", password=mdp_systeme, dsn=dsn) as c:
+    # SYS en SYSDBA : SYSTEM ne peut pas accorder de droits sur les objets de SYS
+    # (DBMS_RLS, rôle AUDIT_VIEWER) — ORA-01031 au premier passage réel, 16/11/2026.
+    with oracledb.connect(user="sys", password=mdp_systeme, dsn=dsn,
+                          mode=oracledb.AUTH_MODE_SYSDBA) as c:
         cur = c.cursor()
         for nom in noms:
             for bloc in blocs((RACINE / "sql" / nom).read_text(encoding="utf-8").replace("{mdp}", mdp)):
-                cur.execute(bloc)
+                try:
+                    cur.execute(bloc)
+                except oracledb.DatabaseError as e:
+                    # Dire QUELLE instruction a échoué, sans montrer le mot de passe.
+                    print(f"  {nom} : ÉCHEC sur « {bloc.replace(mdp, '***')[:120]} »")
+                    raise SystemExit(str(e).splitlines()[0]) from None
             print(f"  {nom} : fait")
         c.commit()
 
@@ -79,7 +92,7 @@ def main(argv=None) -> int:
     p.add_argument("--tout", action="store_true")
     p.add_argument("--bac", action="store_true")
     a = p.parse_args(argv)
-    dsn = os.environ.get("ORACLE_DSN", "localhost:1521/FREEPDB1")
+    dsn = os.environ.get("ORACLE_DSN", "localhost:1522/FREEPDB1")
     sys_mdp, mdp = os.environ["ORACLE_PWD"], os.environ["PERSONA_PASSWORD"]
     if a.hr:
         charger_hr(sys_mdp, mdp)

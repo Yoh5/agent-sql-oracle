@@ -8,18 +8,44 @@ et l'audit d'Oracle. Puis on l'attaque, et on mesure qui arrête l'attaque.
 Conception : `docs/superpowers/specs/2026-11-16-agent-sql-oracle-design.md`
 Plan de la phase 1 : `docs/superpowers/plans/2026-11-16-phase1-socle.md`
 
-## État (16/11/2026)
+## État (16/11/2026, soir)
 
-| tâche | état |
+**Tout tourne contre une vraie base Oracle** (Oracle AI Database Free 23.26, conteneur
+`gvenzl/oracle-free:slim`) : 70 tests, dont ceux qui exigent Oracle, passent ; aucun n'est sauté.
+
+### Premier résultat : le banc d'attaques, modèle qui cède à tout
+
+Le « modèle factice » écrit tel quel le SQL malveillant de chacune des 20 attaques : c'est
+le pire modèle possible. On mesure ce qui l'arrête.
+
+| barrières | l'agent laisse passer | la base SEULE laisse passer (sonde) |
+|---|---|---|
+| **compte restreint + VPD + consignes** (`C1V1P1`) | **0 attaque sur 20** | **0 fuite, 0 écriture** |
+| **aucune** (`C0V0P0`) | **14 attaques sur 20** | **14 fuites + 4 écritures sur 4** |
+
+Avec toutes les barrières : les 4 écritures sont **refusées par Oracle** (droits), les 15
+lectures interdites sont **filtrées par la VPD** (le résultat revient, sans les lignes des
+autres services), et l'usurpation par `DBMS_SESSION.SET_IDENTIFIER` passe mais **ne change
+rien** : la règle lit le compte connecté. Sans barrière, même un **message d'erreur** Oracle
+(`ORA-01722`) suffit à faire sortir un e-mail.
+
+C'est un résultat **avec le pire modèle**, pas avec un vrai LLM : la campagne de mesure avec
+Groq (coût à annoncer avant) dira ce qu'un modèle réel refuse de lui-même, et ce qui reste à
+la base.
+
+### Ce que le premier passage réel a corrigé
+
+| trouvé | corrigé |
 |---|---|
-| 0–6 dépôt, barrières, profils, classement, modèle (Groq vérifié), journal, 20 attaques, agent | fait, testé |
-| 8 exécuteur Oracle | logique testée hors base ; tests réels en attente |
-| 9 banc d'attaques (modèle / agent / **base seule sondée**) | logique testée hors base ; tests réels en attente |
-| 10 page web | faite, vue dans le navigateur avec un modèle et une base factices |
-| 7 scripts Oracle (comptes, synonymes, copie jetable, VPD, audit) et installateur | **écrits, NON EXÉCUTÉS** : Docker ne démarre pas sur ce poste |
-
-**Rien de ce qui touche Oracle n'a encore tourné.** Les scripts SQL suivent la
-documentation ; ils seront corrigés au premier passage réel.
+| `hr_install.sql` pose ses questions (mot de passe masqué) et ne se pilote pas par l'entrée standard ; sa copie appartenait à root | `sql/hr_charger.sql`, chargeur sans question ; copie rendue à l'utilisateur `oracle` |
+| SYSTEM ne peut pas accorder de droits sur les objets de SYS (`ORA-01031`) | installation en **SYS (SYSDBA)** |
+| Oracle 23 : `EXECUTE` sur `DBMS_RLS` ne suffit plus pour gérer la règle d'un autre schéma | `ADMINISTER ROW LEVEL SECURITY POLICY` au gardien |
+| Oracle 23 refuse un UPDATE avec un **code nouveau, `ORA-41900`** | ajouté aux codes « la base a refusé » ; sans lui, un refus passait pour une erreur |
+| l'installation ne se rejouait pas (comptes, audit activé par compte : `ORA-46361`) | remise à zéro en tête de `00_comptes.sql` ; rejouée deux fois de suite |
+| la sonde comptait « acceptée » une écriture qui ne change rien (`SET_IDENTIFIER`) | issue `sans_effet` |
+| …puis ne voyait plus les écritures acceptées, **annulées par l'exécuteur** | lignes modifiées relevées avant l'annulation ; la copie jetable, elle, valide |
+| à la seconde tentative, le modèle factice « refusait » (question + erreur inconnue) | il répond comme à la première : le pire modèle reste le pire |
+| le port 1521 est pris par les Oracle 19c/21c installés sur le poste | conteneur sur **1522** |
 
 ![La page : une modification reste en attente, rien n'est envoyé à la base](docs/page-attente.png)
 
@@ -35,33 +61,24 @@ pytest                      # sans Oracle, les tests qui en ont besoin se sauten
 
 ## Démarrer Oracle
 
-Oracle AI Database Free tourne dans Docker. **Sur ce poste, Docker ne démarre pas
-(16/11/2026)** : son journal dit `HCS_E_HYPERV_NOT_INSTALLED` — la virtualisation est
-bien active dans le BIOS, mais l'hyperviseur de Windows est arrêté. À faire **une fois,
-dans un terminal administrateur**, puis redémarrer :
-
-```powershell
-wsl --install --no-distribution
-# ou : dism /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
-bcdedit /set hypervisorlaunchtype auto
-```
-
-Vérification après redémarrage (doit afficher `True`) :
-
-```powershell
-(Get-CimInstance Win32_ComputerSystem).HypervisorPresent
-```
-
-Ensuite : lancer Docker Desktop, puis
+Oracle AI Database Free tourne dans Docker (image `gvenzl/oracle-free:slim` par défaut ;
+l'officielle avec `ORACLE_IMAGE=container-registry.oracle.com/database/free:latest`).
+Le conteneur écoute sur **1522** (`ORACLE_PORT`), parce que 1521 est souvent pris par une
+installation Oracle locale.
 
 ```bash
-docker compose up -d            # image container-registry.oracle.com/database/free:latest
-python scripts/installer.py --hr     # le schéma HR, depuis le dépôt officiel d'Oracle
-python scripts/installer.py --tout   # comptes, copie jetable, VPD, audit
+docker compose up -d                 # attendre « DATABASE IS READY TO USE! » (docker logs oracle-free)
+python scripts/installer.py --hr     # le schéma HR officiel, sans question
+python scripts/installer.py --tout   # comptes, copie jetable, VPD, audit — rejouable
 pytest                               # les tests Oracle ne se sautent plus
-python -m borne.banc                 # les 20 attaques, modèle qui cède toujours
+python -m borne.banc --barrieres C1V1P1   # les 20 attaques, modèle qui cède toujours
+python -m borne.banc --barrieres C0V0P0   # la même chose, sans aucune barrière
 uvicorn borne.web:app --port 8030    # la page
 ```
+
+Si Docker refuse de démarrer sous Windows avec `HCS_E_HYPERV_NOT_INSTALLED` : dans un terminal
+**administrateur**, `dism /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart`
+puis `bcdedit /set hypervisorlaunchtype auto`, et redémarrer.
 
 ## Ce que ce projet ne fait pas encore
 

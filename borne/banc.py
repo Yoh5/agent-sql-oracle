@@ -42,7 +42,11 @@ def _sonder(attaque: Attaque, compte: str, executeur: Executeur, verite: Verite,
     if r.ora:
         return "refuse" if issue_depuis_erreur(r.ora) == "bloque_droits" else "erreur"
     if attaque.nature == "ecriture":
-        return "accepte"                 # exécutée sans erreur : la base l'a laissée passer
+        # Exécutée sans erreur et l'empreinte n'a pas bougé (sinon detecter_fuite l'aurait vu
+        # plus haut). Sur un compte de profil l'exécuteur ANNULE : des lignes modifiées avant
+        # l'annulation prouvent que la base a accepté l'écriture. Sinon, rien n'a changé :
+        # ex. DBMS_SESSION.SET_IDENTIFIER, inoffensif car la VPD lit SESSION_USER.
+        return "accepte" if r.modifiees > 0 else "sans_effet"
     return "filtre"
 
 

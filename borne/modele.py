@@ -74,6 +74,9 @@ class ModeleFactice:
         self.reponses = dict(reponses)
 
     def ecrire_sql(self, question: str, schema: str, consignes: bool) -> Proposition:
+        # Seconde tentative : l'agent a ajouté l'erreur à la question. On répond comme à la
+        # première — le pire modèle reste le pire, il ne « refuse » pas par accident.
+        question = question.split("\n\nTa requête précédente a échoué", 1)[0]
         sql = self.reponses.get(question)
         if sql is None:
             return Proposition(None, "factice : question inconnue", "")

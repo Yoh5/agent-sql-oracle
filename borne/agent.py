@@ -28,6 +28,9 @@ class Resultat:
     ora: Optional[str]
     message: Optional[str]
     audit_ref: Optional[str]
+    #: lignes que la base a laissé modifier, relevé AVANT l'annulation (0 pour une lecture,
+    #: et pour un bloc PL/SQL, où le pilote ne le rapporte pas).
+    modifiees: int = 0
 
 
 class Executeur(Protocol):

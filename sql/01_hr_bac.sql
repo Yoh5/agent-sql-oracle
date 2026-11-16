@@ -1,5 +1,4 @@
--- La copie jetable HR_BAC et sa remise à neuf. Exécuté par SYSTEM.
--- NON VÉRIFIÉ contre une vraie base au 16/11/2026.
+-- La copie jetable HR_BAC et sa remise à neuf. Exécuté par SYS (SYSDBA).
 -- `recreer` est une procédure de HR_BAC (droits du définisseur) : elle supprime ses
 -- propres tables et les recopie depuis HR. Appelée avant chaque attaque par le banc.
 
