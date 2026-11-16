@@ -112,6 +112,9 @@ class ModeleGroq:
     #: message quand réessayer. Sans attente, six configurations de la campagne sont
     #: tombées en 429 en série.
     ESSAIS_LIMITE = 8
+    #: Au-delà, la limite est journalière (« try again in 10h46m… ») : attendre bloquerait
+    #: la campagne des heures. On rend une panne, et la campagne s'arrête proprement.
+    ATTENTE_MAX_S = 120.0
 
     def __init__(self, modele: str, cle: str, delai_s: float = 30.0, client: Any = None,
                  attendre: Optional[Callable[[float], None]] = None):
@@ -132,12 +135,12 @@ class ModeleGroq:
     @staticmethod
     def _delai_demande(message: str) -> float:
         """« Please try again in 892.5ms » / « in 2.85s » / « in 1m3.2s » -> secondes."""
-        m = re.search(r"try again in\s+(?:(\d+)m)?([\d.]+)(ms|s)", message)
+        m = re.search(r"try again in\s+(?:(\d+)h)?(?:(\d+)m(?!s))?([\d.]+)(ms|s)", message)
         if not m:
             return 5.0
-        minutes, valeur, unite = m.groups()
+        heures, minutes, valeur, unite = m.groups()
         s = float(valeur) / (1000 if unite == "ms" else 1)
-        return s + 60 * int(minutes or 0)
+        return s + 60 * int(minutes or 0) + 3600 * int(heures or 0)
 
     def ecrire_sql(self, question: str, schema: str, consignes: bool,
                    contexte: str = "") -> Proposition:
@@ -150,7 +153,10 @@ class ModeleGroq:
             except Exception as e:
                 derniere = e
                 if type(e).__name__ == "RateLimitError" or "429" in str(e):
-                    self._attendre(self._delai_demande(str(e)) + 0.5)
+                    delai = self._delai_demande(str(e))
+                    if delai > self.ATTENTE_MAX_S:
+                        break               # quota journalier : c'est une panne, pas une sieste
+                    self._attendre(delai + 0.5)
                     continue
                 break                       # autre panne : inutile d'insister
             self.appels += 1

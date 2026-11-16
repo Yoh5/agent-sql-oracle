@@ -1,3 +1,4 @@
+import pytest
 from borne.modele import CONSIGNES, CONSIGNES_RH, ModeleFactice, ModeleGroq, Proposition, construire_prompt, extraire
 
 
@@ -59,6 +60,10 @@ def test_le_vrai_modele_repond(cle_groq):
                      "HR.EMPLOYEES(EMPLOYEE_ID NUMBER, LAST_NAME VARCHAR2, DEPARTMENT_ID NUMBER)", True)
     # « p.sql or p.refus » passait aussi sur une PANNE (le refus porte le message d'erreur) :
     # il n'a rien vu quand Groq a retiré llama-3.3-70b. Une panne doit faire échouer ce test.
+    if p.panne and "429" in (p.refus or ""):
+        # Quota du compte épuisé (200 000 jetons/jour en offre gratuite, vu le 16/11/2026) :
+        # ce n'est pas le code qui est en cause. Un modèle RETIRÉ (404), lui, fait échouer.
+        pytest.skip("quota Groq épuisé : " + (p.refus or "")[:120])
     assert not p.panne, p.refus
     assert p.sql and "SELECT" in p.sql.upper()
 
@@ -140,3 +145,22 @@ def test_une_limite_qui_ne_passe_pas_reste_une_panne():
     m = ModeleGroq("openai/gpt-oss-20b", "cle", client=Client(), attendre=lambda s: None)
     p = m.ecrire_sql("q", "s", True)
     assert p.panne and p.sql is None
+
+
+def test_une_attente_de_plusieurs_heures_est_une_panne_pas_une_sieste():
+    # Limite JOURNALIÈRE (1 000 requêtes/jour sur ce compte) : Groq répond « try again in
+    # 10h46m… ». Attendre 8 fois ce délai bloquait la campagne pendant des jours.
+    class RateLimitError(Exception):
+        pass
+    attentes, essais = [], []
+
+    class Client:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**_):
+                    essais.append(1)
+                    raise RateLimitError("Error code: 429 - requests per day (RPD) ... Please try again in 10h46m33.6s.")
+    m = ModeleGroq("openai/gpt-oss-120b", "cle", client=Client(), attendre=attentes.append)
+    p = m.ecrire_sql("q", "s", True)
+    assert p.panne and attentes == [] and len(essais) == 1
