@@ -24,6 +24,14 @@ def test_une_politique_qui_plante_est_une_erreur_pas_un_succes():
     assert comparer(_photo(M={"1"}), _photo(M=None)).verdict == "erreur"
 
 
+def test_une_reference_qui_echoue_est_une_faute_du_banc_pas_un_succes():
+    # Trouvé le 16/11/2026 : la référence de « historique_actuel » échouait (ORA-28113) et
+    # comparer() SAUTAIT la table en silence : un mutant à trou était déclaré « juste ».
+    from borne.preuve import ReferenceInvalide
+    with pytest.raises(ReferenceInvalide):
+        comparer(_photo(M=None), _photo(M={"1"}))
+
+
 def test_chaque_regle_a_des_mutants_des_deux_sortes():
     for r in CATALOGUE:
         assert {"trou", "trop_stricte"} <= {m.attendu for m in r.mutants.values()}, r.id
@@ -88,3 +96,37 @@ def test_reel_les_attaques_ratent_un_trou_que_la_comparaison_de_lignes_attrape(t
     assert juger(terrain, regle.reference, mutant).verdict == "trou"
     assert not any(x["issue"] in ("fuite", "divergence")
                    for x in rejouer_attaques(terrain, regle.reference, mutant))
+
+
+def test_la_boucle_de_correction_rend_le_rapport_au_modele_et_s_arrete_sur_juste():
+    from borne.generateur import GenerateurPolitique, generer_et_prouver
+    recus = []
+
+    class Modele:
+        def completer(self, messages):
+            recus.append(messages)
+            return "```sql\n" + (CATALOGUE[0].mutants["null_ouvert"].source if len(recus) == 1
+                                 else CATALOGUE[0].reference) + "\n```"
+
+    def eprouver(source):
+        juste = source == CATALOGUE[0].reference
+        return {"verdict": "juste" if juste else "trou",
+                "detail": "juste" if juste else "ESSAI_M50/EMPLOYEES : 1 en trop, 0 en moins"}
+    tours = generer_et_prouver(GenerateurPolitique(Modele()), CATALOGUE[0], "gen_s",
+                               {"EMPLOYEES": ["EMPLOYEE_ID"]}, eprouver, corrections=2)
+    assert [t["verdict"] for t in tours] == ["trou", "juste"]
+    assert "1 en trop" in recus[1][-1]["content"]          # le rapport du juge revient au modèle
+
+
+
+def test_une_reponse_sans_fonction_est_illisible_pas_refusee():
+    from borne.generateur import GenerateurPolitique, generer_et_prouver
+    reponses = iter(["Je réfléchis...", "```sql\n" + CATALOGUE[0].reference + "\n```"])
+
+    class Modele:
+        def completer(self, messages):
+            return next(reponses)
+    tours = generer_et_prouver(GenerateurPolitique(Modele()), CATALOGUE[0], "g", {}, 
+                               lambda s: {"verdict": "juste", "detail": "juste"}, corrections=2)
+    assert [t["verdict"] for t in tours] == ["illisible", "juste"]
+    assert "Je réfléchis" in tours[0]["detail"]

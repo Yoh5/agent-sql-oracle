@@ -18,6 +18,10 @@ from borne.politique import ControleRefuse, TerrainEssai
 Photo = Dict[str, Dict[str, Optional[Set[str]]]]
 
 
+class ReferenceInvalide(RuntimeError):
+    """La politique de RÉFÉRENCE échoue : c'est le banc qui est faux, pas la candidate."""
+
+
 @dataclass
 class Ecart:
     compte: str
@@ -42,7 +46,9 @@ class Verdict:
             return "juste : chaque compte voit exactement ce que voit la référence"
         return " ; ".join(
             f"{e.compte}/{e.table} : " + ("la requête échoue" if e.erreur else
-                                          f"{e.en_trop} en trop, {e.en_moins} en moins")
+                                          f"{e.en_trop} en trop, {e.en_moins} en moins"
+                                          + (f" (en trop : {', '.join(e.exemples_en_trop)})" if e.exemples_en_trop else "")
+                                          + (f" (en moins : {', '.join(e.exemples_en_moins)})" if e.exemples_en_moins else ""))
             for e in self.ecarts)
 
 
@@ -52,7 +58,9 @@ def comparer(reference: Photo, candidate: Photo) -> Verdict:
         for table, attendu in tables.items():
             vu = candidate[compte][table]
             if attendu is None:
-                continue                  # la référence elle-même n'a pas de réponse ici
+                # La référence elle-même échoue : il n'y a plus rien à comparer. Sauter la
+                # table déclarait « juste » n'importe quelle candidate (vu le 16/11/2026).
+                raise ReferenceInvalide(f"la référence échoue pour {compte} sur {table}")
             if vu is None:
                 ecarts.append(Ecart(compte, table, 0, len(attendu), erreur=True))
                 continue

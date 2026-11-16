@@ -32,6 +32,13 @@ CREATE USER essai_pol IDENTIFIED BY "{mdp}" QUOTA 10M ON users
 /
 GRANT CREATE SESSION, CREATE PROCEDURE TO essai_pol
 /
+-- Oracle analyse les SOUS-REQUÊTES d'un prédicat VPD avec les droits du propriétaire de
+-- la fonction, pas de l'utilisateur (vérifié le 16/11/2026 : sans ce droit, « l'historique
+-- des employés actuellement dans son service » échouait en ORA-28113). Lecture seule de la
+-- table des employés de la COPIE : la fonction ne peut toujours rien écrire, et ce qu'elle
+-- lit ne sort que sous forme de prédicat, jamais montré à l'utilisateur.
+GRANT SELECT ON hr_essai.employees TO essai_pol
+/
 CREATE TABLE essai_pol.profils (
   compte          VARCHAR2(30) PRIMARY KEY,
   departement_id  NUMBER(4),

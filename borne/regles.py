@@ -96,3 +96,44 @@ CATALOGUE = [
                                     "trop_stricte", "les commis (_CLERK) disparaissent"),
         }),
 ]
+
+
+def _historique(nom: str, historique_manager: str) -> str:
+    """Une politique qui distingue les tables (p_objet) : EMPLOYEES par service, et
+    JOB_HISTORY selon `historique_manager` pour un manager."""
+    return f"""CREATE OR REPLACE FUNCTION {nom} (p_schema VARCHAR2, p_objet VARCHAR2)
+  RETURN VARCHAR2 AS
+  v_role essai_pol.profils.role%TYPE;
+  v_dep  essai_pol.profils.departement_id%TYPE;
+BEGIN
+  SELECT role, departement_id INTO v_role, v_dep
+    FROM essai_pol.profils WHERE compte = SYS_CONTEXT('USERENV', 'SESSION_USER');
+  IF v_role = 'rh' THEN
+    RETURN NULL;
+  END IF;
+  IF UPPER(p_objet) = 'JOB_HISTORY' THEN
+    RETURN {historique_manager};
+  END IF;
+  RETURN 'department_id = ' || TO_CHAR(v_dep);
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    RETURN '1=0';
+END;"""
+
+
+# Données vérifiées le 16/11/2026 : l'employé 114 était au service 50 (historique) et est
+# aujourd'hui au service 30. Filtrer l'historique sur l'ANCIEN service le montre au manager 50.
+CATALOGUE.append(Regle(
+    "historique_actuel",
+    "Sur les employés, un manager voit son service et la RH tout le monde. Sur l'historique "
+    "des postes, un manager ne voit que l'historique des employés ACTUELLEMENT dans son "
+    "service ; la RH voit tout. Un compte sans profil ne voit rien.",
+    _historique("ref_historique",
+                "'employee_id IN (SELECT employee_id FROM hr_essai.employees WHERE department_id = ' "
+                "|| TO_CHAR(v_dep) || ')'"),
+    {
+        "ancien_service": Mutant(_historique("mut_hist_ancien", "'department_id = ' || TO_CHAR(v_dep)"), "trou",
+                                 "l'historique est filtré sur le service d'ALORS, pas sur le service actuel"),
+        "historique_ferme": Mutant(_historique("mut_hist_ferme", "'1=0'"), "trop_stricte",
+                                   "le manager ne voit plus aucun historique"),
+    }))
