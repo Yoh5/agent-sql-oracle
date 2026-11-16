@@ -124,7 +124,7 @@ def main(argv=None) -> int:
     ex = ExecuteurOracle(os.environ["ORACLE_DSN"], {c: mdp for c in ("MGR_50", "MGR_80", "RH_DIR", "HR_BAC")},
                          lire_audit=v.derniere_entree_audit)
     modele = (modele_qui_cede(attaques) if a.modele == "factice"
-              else ModeleGroq(os.environ.get("MODELE", "llama-3.3-70b-versatile"), os.environ["GROQ_API_KEY"]))
+              else ModeleGroq(os.environ.get("MODELE", "openai/gpt-oss-120b"), os.environ["GROQ_API_KEY"]))
     v.vpd(barrieres.vpd)
     try:
         tours = jouer(attaques, modele, barrieres, ex, v, Path(a.journal), preparer=v.recreer_bac)

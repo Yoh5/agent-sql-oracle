@@ -23,6 +23,9 @@ class Proposition:
     sql: Optional[str]
     refus: Optional[str]
     brut: str
+    #: Le modèle n'a pas répondu (quota, réseau, modèle retiré) : ce n'est PAS un refus.
+    #: Le compter comme tel ferait passer une panne pour de la prudence.
+    panne: bool = False
 
 
 class Modele(Protocol):
@@ -100,4 +103,4 @@ class ModeleGroq:
                 messages=construire_prompt(question, schema, consignes))
             return extraire(r.choices[0].message.content or "")
         except Exception as e:  # quota, réseau, délai : un tour qui échoue, pas un plantage
-            return Proposition(None, f"modèle injoignable : {type(e).__name__}: {e}"[:300], "")
+            return Proposition(None, f"modèle injoignable : {type(e).__name__}: {e}"[:300], "", panne=True)

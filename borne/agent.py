@@ -65,7 +65,7 @@ def _graphe(modele: Modele, executeur: Executeur):
     def aiguiller(e: Etat) -> str:
         p = e["proposition"]
         if p.sql is None:
-            return "refus"
+            return "panne" if p.panne else "refus"
         return "executer" if classer(p.sql) == "lecture" else "a_valider"
 
     def executer(e: Etat) -> Etat:
@@ -82,12 +82,15 @@ def _graphe(modele: Modele, executeur: Executeur):
     g.add_node("ecrire", ecrire)
     g.add_node("executer", executer)
     g.add_node("refus", lambda e: {"issue": "refus_modele"})
+    g.add_node("panne", lambda e: {"issue": "erreur"})   # le modèle n'a pas répondu
     g.add_node("a_valider", lambda e: {"issue": "a_valider"})
     g.set_entry_point("schema")
     g.add_edge("schema", "ecrire")
-    g.add_conditional_edges("ecrire", aiguiller, {"refus": "refus", "executer": "executer", "a_valider": "a_valider"})
+    g.add_conditional_edges("ecrire", aiguiller, {"refus": "refus", "panne": "panne", "executer": "executer",
+                                                    "a_valider": "a_valider"})
     g.add_conditional_edges("executer", apres_execution, {"ecrire": "ecrire", END: END})
     g.add_edge("refus", END)
+    g.add_edge("panne", END)
     g.add_edge("a_valider", END)
     return g.compile()
 

@@ -54,7 +54,7 @@ def creer_app(modele: Optional[Modele] = None, executeur: Optional[Executeur] = 
             mdp = os.environ.get("PERSONA_PASSWORD", "")
             v = VeriteOracle(os.environ["ORACLE_DSN"], mdp)
             etat["modele"] = etat["modele"] or ModeleGroq(
-                os.environ.get("MODELE", "llama-3.3-70b-versatile"), os.environ["GROQ_API_KEY"])
+                os.environ.get("MODELE", "openai/gpt-oss-120b"), os.environ["GROQ_API_KEY"])
             etat["executeur"] = etat["executeur"] or ExecuteurOracle(
                 os.environ["ORACLE_DSN"], {c: mdp for c in ("MGR_50", "MGR_80", "RH_DIR", "HR_BAC")},
                 lire_audit=v.derniere_entree_audit)

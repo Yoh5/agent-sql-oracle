@@ -80,3 +80,15 @@ def test_un_profil_inconnu_est_refuse_avant_toute_connexion():
     with pytest.raises(ValueError):
         _tour(ModeleFactice({}), ex, profil="inconnu")
     assert ex.appels == []
+
+
+def test_une_panne_du_modele_nest_pas_un_refus():
+    # Vu le 16/11/2026 : Groq a retiré llama-3.3-70b (404). Le modèle rendait un « refus »
+    # et la campagne aurait compté chaque panne comme une prudence du modèle.
+    class EnPanne:
+        nom = "panne"
+        def ecrire_sql(self, question, schema, consignes):
+            return Proposition(None, "modèle injoignable : NotFoundError", "", panne=True)
+    ex = ExecuteurFactice()
+    t = _tour(EnPanne(), ex)
+    assert t.issue == "erreur" and ex.appels == []

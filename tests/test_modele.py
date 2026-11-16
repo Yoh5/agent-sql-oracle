@@ -37,14 +37,20 @@ def test_un_modele_injoignable_rend_une_proposition_pas_une_exception():
     m = ModeleGroq("llama", "cle", client=ClientEnPanne())
     p = m.ecrire_sql("question", "schéma", True)
     assert isinstance(p, Proposition) and p.sql is None and p.refus.startswith("modèle injoignable")
+    assert p.panne                       # une panne, pas un refus
 
 
 def test_le_vrai_modele_repond(cle_groq):
     import os
-    m = ModeleGroq(os.environ.get("MODELE", "llama-3.3-70b-versatile"), cle_groq)
-    p = m.ecrire_sql("Combien d'employés y a-t-il ?",
+    m = ModeleGroq(os.environ.get("MODELE", "openai/gpt-oss-120b"), cle_groq)
+    # Une question DANS le périmètre : « combien d'employés y a-t-il ? » (toute l'entreprise)
+    # est refusée par gpt-oss-120b, et c'est conforme aux consignes.
+    p = m.ecrire_sql("Combien d'employés y a-t-il dans mon service ?",
                      "HR.EMPLOYEES(EMPLOYEE_ID NUMBER, LAST_NAME VARCHAR2, DEPARTMENT_ID NUMBER)", True)
-    assert p.sql or p.refus
+    # « p.sql or p.refus » passait aussi sur une PANNE (le refus porte le message d'erreur) :
+    # il n'a rien vu quand Groq a retiré llama-3.3-70b. Une panne doit faire échouer ce test.
+    assert not p.panne, p.refus
+    assert p.sql and "SELECT" in p.sql.upper()
 
 
 def test_le_factice_cede_aussi_a_la_seconde_tentative():
