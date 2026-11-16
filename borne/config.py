@@ -54,6 +54,19 @@ PROFILS: Dict[str, Profil] = {
     "rh": Profil("rh", "RH_DIR", None, "rh"),
 }
 
+#: Le nom des services du schéma HR, pour dire au modèle qui l'interroge.
+NOMS_SERVICES: Dict[int, str] = {50: "Shipping", 80: "Sales"}
+
+
+def contexte_utilisateur(profil: Profil) -> str:
+    """Qui est connecté, en une ligne pour le modèle. Ce n'est PAS une barrière : une
+    application réelle sait qui est l'utilisateur et le dit. Sans cette ligne, « mon
+    service » n'a pas de réponse quand la VPD est coupée."""
+    if profil.role == "rh":
+        return "direction des ressources humaines (accès à tous les services)"
+    nom = NOMS_SERVICES.get(profil.departement)
+    return f"manager du service {profil.departement}" + (f" ({nom})" if nom else "")
+
 
 def compte_pour(profil: Profil, barrieres: Barrieres) -> str:
     return profil.compte if barrieres.compte_restreint else COMPTE_BAC

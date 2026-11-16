@@ -42,9 +42,13 @@ GRANT EXECUTE ON DBMS_RLS TO sec_admin
 -- d'un AUTRE schéma (ORA-01031 dans DBMS_RLS, vu le 16/11/2026) ; il faut ce privilège.
 GRANT ADMINISTER ROW LEVEL SECURITY POLICY TO sec_admin
 /
-GRANT SELECT ON hr.employees TO sec_admin
-/
-GRANT SELECT ON hr.job_history TO sec_admin
+-- Le gardien lit TOUT HR : la vérité des attaques (employees, job_history) et celle
+-- des questions d'utilité (départements, postes, sites, pays, régions).
+BEGIN
+  FOR t IN (SELECT table_name FROM all_tables WHERE owner = 'HR') LOOP
+    EXECUTE IMMEDIATE 'GRANT SELECT ON hr.' || t.table_name || ' TO sec_admin';
+  END LOOP;
+END;
 /
 CREATE TABLE sec_admin.profils (
   compte          VARCHAR2(30) PRIMARY KEY,

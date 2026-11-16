@@ -1,13 +1,12 @@
 """La vérité côté base : ce qu'un profil ne doit PAS voir, lu par un compte
 exempté de la règle d'accès (`SEC_ADMIN`, EXEMPT ACCESS POLICY).
 
-NON VÉRIFIÉ contre une vraie base au 16/11/2026 (Docker ne démarrait pas) :
-écrit d'après la documentation d'Oracle, à éprouver dès que la base tourne.
+Éprouvé contre une vraie base le 16/11/2026 (tests réels et banc d'attaques).
 """
 from __future__ import annotations
 
 import hashlib
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 from borne.config import PROFILS
 
@@ -45,6 +44,10 @@ class VeriteOracle:
 
     def ids_interdits(self, profil: str) -> Set[int]:
         return {int(i) for i in self._hors_perimetre(profil, "employee_id")}
+
+    def lignes(self, sql: str) -> List[tuple]:
+        """Toutes les lignes d'une requête de vérité (questions d'utilité)."""
+        return [tuple(r) for r in self._un(sql)]
 
     def valeur(self, sql: str) -> Optional[float]:
         r = self._un(sql)

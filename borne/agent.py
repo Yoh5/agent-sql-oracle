@@ -16,7 +16,7 @@ from typing import List, Optional, Protocol, Tuple, TypedDict
 from langgraph.graph import END, StateGraph
 
 from borne.classer import classer
-from borne.config import PROFILS, Barrieres, compte_pour
+from borne.config import PROFILS, Barrieres, compte_pour, contexte_utilisateur
 from borne.journal import Tour, issue_depuis_erreur
 from borne.modele import Modele, Proposition
 
@@ -42,6 +42,7 @@ class Etat(TypedDict, total=False):
     question: str
     compte: str
     consignes: bool
+    contexte: str
     schema: str
     proposition: Proposition
     resultat: Resultat
@@ -59,7 +60,8 @@ def _graphe(modele: Modele, executeur: Executeur):
         if r is not None and r.ora:          # seconde tentative : on rend l'erreur au modèle
             question += (f"\n\nTa requête précédente a échoué : {r.message}. "
                          f"Corrige-la. Requête : {e['proposition'].sql}")
-        return {"proposition": modele.ecrire_sql(question, e["schema"], e["consignes"]),
+        return {"proposition": modele.ecrire_sql(question, e["schema"], e["consignes"],
+                                                 contexte=e["contexte"]),
                 "tentatives": e["tentatives"] + 1}
 
     def aiguiller(e: Etat) -> str:
@@ -109,7 +111,8 @@ def repondre_detail(question: str, profil: str, barrieres: Barrieres, modele: Mo
         raise ValueError(f"profil inconnu : {profil!r} (connus : {', '.join(PROFILS)})")
     compte = compte_pour(PROFILS[profil], barrieres)
     fin = _graphe(modele, executeur).invoke(
-        {"question": question, "compte": compte, "consignes": barrieres.consignes_prompt})
+        {"question": question, "compte": compte, "consignes": barrieres.consignes_prompt,
+         "contexte": contexte_utilisateur(PROFILS[profil])})
 
     p: Proposition = fin["proposition"]
     r: Optional[Resultat] = fin.get("resultat")

@@ -41,7 +41,7 @@ def test_sans_compte_restreint_on_vise_la_copie_jetable():
 def test_un_refus_du_modele_nexecute_rien():
     class Refuse:
         nom = "refuse"
-        def ecrire_sql(self, *a):
+        def ecrire_sql(self, *a, **k):
             return Proposition(None, "hors de votre service", "REFUS: …")
     ex = ExecuteurFactice()
     t = _tour(Refuse(), ex)
@@ -65,7 +65,7 @@ def test_une_erreur_de_sql_a_droit_a_une_seconde_tentative():
         nom = "corrige"
         def __init__(self):
             self.vus = []
-        def ecrire_sql(self, question, schema, consignes):
+        def ecrire_sql(self, question, schema, consignes, contexte=""):
             self.vus.append(question)
             return Proposition("SELECT 1 FROM dual", None, "")
     m = Corrige()
@@ -87,8 +87,21 @@ def test_une_panne_du_modele_nest_pas_un_refus():
     # et la campagne aurait compté chaque panne comme une prudence du modèle.
     class EnPanne:
         nom = "panne"
-        def ecrire_sql(self, question, schema, consignes):
+        def ecrire_sql(self, question, schema, consignes, **k):
             return Proposition(None, "modèle injoignable : NotFoundError", "", panne=True)
     ex = ExecuteurFactice()
     t = _tour(EnPanne(), ex)
     assert t.issue == "erreur" and ex.appels == []
+
+
+
+def test_l_agent_donne_au_modele_le_contexte_du_profil():
+    vus = []
+
+    class Espion:
+        nom = "espion"
+        def ecrire_sql(self, question, schema, consignes, contexte=""):
+            vus.append(contexte)
+            return Proposition("SELECT 1 FROM dual", None, "")
+    _tour(Espion(), ExecuteurFactice(OK), profil="manager_80", barrieres=Barrieres(False, False, False))
+    assert vus == ["manager du service 80 (Sales)"]

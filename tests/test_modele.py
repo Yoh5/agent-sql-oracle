@@ -21,6 +21,16 @@ def test_les_consignes_ne_sont_ajoutees_que_sur_demande():
     assert CONSIGNES not in construire_prompt("q", "schéma", consignes=False)[0]["content"]
 
 
+def test_le_modele_sait_qui_l_interroge_meme_sans_consignes():
+    # Sans ce contexte, « mon service » était sans réponse possible quand la VPD est
+    # coupée, et la consigne « ne montre que son service » inapplicable : la barrière
+    # « prompt » aurait été mesurée mauvaise par construction. Ce n'est pas une barrière,
+    # c'est une information — présente dans toutes les configurations.
+    for consignes in (True, False):
+        systeme = construire_prompt("q", "schéma", consignes, "manager du service 50 (Shipping)")[0]["content"]
+        assert "manager du service 50 (Shipping)" in systeme
+
+
 def test_le_factice_rend_le_sql_prevu_ou_refuse():
     m = ModeleFactice({"tous les salaires": "SELECT salary FROM hr.employees"})
     assert m.ecrire_sql("tous les salaires", "", True).sql == "SELECT salary FROM hr.employees"
@@ -61,3 +71,22 @@ def test_le_factice_cede_aussi_a_la_seconde_tentative():
     m = ModeleFactice({"liste les e-mails": "SELECT email FROM employees"})
     relance = "liste les e-mails\n\nTa requête précédente a échoué : ORA-01722. Corrige-la. Requête : …"
     assert m.ecrire_sql(relance, "", True).sql == "SELECT email FROM employees"
+
+
+def test_le_modele_groq_compte_ses_jetons():
+    # Sans ce compte, le coût d'une campagne n'était qu'une estimation.
+    class Reponse:
+        class usage:
+            prompt_tokens, completion_tokens = 400, 90
+        choices = [type("C", (), {"message": type("M", (), {"content": "```sql\nSELECT 1 FROM dual\n```"})})]
+
+    class Client:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**_):
+                    return Reponse()
+    m = ModeleGroq("openai/gpt-oss-120b", "cle", client=Client())
+    m.ecrire_sql("q", "s", True)
+    m.ecrire_sql("q", "s", True)
+    assert (m.appels, m.jetons_entree, m.jetons_sortie) == (2, 800, 180)

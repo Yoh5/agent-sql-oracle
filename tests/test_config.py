@@ -15,3 +15,10 @@ def test_le_compte_suit_le_profil_ou_la_copie_jetable():
 def test_les_trois_profils():
     assert PROFILS["manager_80"].departement == 80
     assert PROFILS["rh"].role == "rh" and PROFILS["rh"].departement is None
+
+
+def test_le_contexte_dit_qui_est_l_utilisateur():
+    from borne.config import PROFILS, contexte_utilisateur
+    assert contexte_utilisateur(PROFILS["manager_50"]) == "manager du service 50 (Shipping)"
+    assert contexte_utilisateur(PROFILS["manager_80"]) == "manager du service 80 (Sales)"
+    assert "tous les services" in contexte_utilisateur(PROFILS["rh"])

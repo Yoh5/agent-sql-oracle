@@ -1,0 +1,167 @@
+"""La campagne : sécurité ET utilité, par modèle et par configuration de barrières.
+
+    python -m borne.campagne --modele openai/gpt-oss-120b
+    python -m borne.campagne --modele factice-parfait --configs C1V1P1   # sans coût
+
+Pour chaque configuration (les 8 combinaisons C/V/P) :
+- les 20 attaques, `--repetitions` fois (le banc : issue de l'agent + sonde de la base) ;
+- les 90 questions légitimes (utilité : juste / faux / refus à tort / erreur).
+
+Tout part dans un journal JSONL (une ligne par tour) et un résumé Markdown. Un chiffre
+de sécurité ne se lit JAMAIS sans celui d'utilité à côté : un agent qui refuse tout
+est sûr et inutile.
+"""
+from __future__ import annotations
+
+import argparse
+import itertools
+import json
+import os
+import sys
+import time
+from collections import Counter
+from pathlib import Path
+from typing import Dict, List, Sequence
+
+from borne.agent import Executeur, repondre_detail
+from borne.attaques import CATALOGUE
+from borne.banc import jouer, modele_qui_cede
+from borne.config import PROFILS, Barrieres, contexte_utilisateur
+from borne.modele import Modele, Proposition
+from borne.utilite import QUESTIONS, QuestionUtile, issue_utilite
+
+TOUTES_CONFIGS = ["".join(f"{l}{int(b)}" for l, b in zip("CVP", bits))
+                  for bits in itertools.product((True, False), repeat=3)]
+
+
+class ModeleParfait:
+    """Rend la requête de vérité de chaque question : le plafond d'utilité, sans LLM.
+    Sert à valider la chaîne de mesure avant de payer un vrai modèle.
+
+    Indexé par (contexte, question) et non par la question seule : les managers des
+    services 50 et 80 posent la MÊME phrase. Indexé par la question, le service 80
+    écrasait le 50, et le « parfait » ne faisait que 73 % (vu le 16/11/2026)."""
+    nom = "factice-parfait"
+
+    def __init__(self, questions: Sequence[QuestionUtile]):
+        self.reponses = {(contexte_utilisateur(PROFILS[q.profil]), q.question): q.sql_verite
+                         for q in questions}
+
+    def ecrire_sql(self, question: str, schema: str, consignes: bool, contexte: str = "") -> Proposition:
+        sql = self.reponses.get((contexte, question.split("\n\nTa requête précédente a échoué", 1)[0]))
+        return Proposition(sql, None, sql or "") if sql else Proposition(None, "question inconnue", "")
+
+
+def modele_parfait(questions: Sequence[QuestionUtile]) -> ModeleParfait:
+    return ModeleParfait(questions)
+
+
+def jouer_utilite(questions: Sequence[QuestionUtile], modele: Modele, barrieres: Barrieres,
+                  executeur: Executeur, verite) -> List[dict]:
+    lignes = []
+    for q in questions:
+        t, r = repondre_detail(q.question, q.profil, barrieres, modele, executeur)
+        issue = issue_utilite(t.issue, r.lignes if r else None, verite.lignes(q.sql_verite))
+        lignes.append({"type": "utilite", "id": q.id, "profil": q.profil, "barrieres": barrieres.code(),
+                       "modele": t.modele, "issue": issue, "issue_agent": t.issue, "sql": t.sql,
+                       "erreur": t.erreur})
+    return lignes
+
+
+def resumer(journal: Sequence[dict]) -> str:
+    """Un tableau par configuration : attaques passées (agent / base seule) et utilité."""
+    par_cfg: Dict[str, Dict[str, Counter]] = {}
+    for l in journal:
+        c = par_cfg.setdefault(l["barrieres"], {"att": Counter(), "base": Counter(), "util": Counter()})
+        if l["type"] == "attaque":
+            c["att"]["total"] += 1
+            c["att"]["passe"] += l["issue"] == "reussi"
+            c["base"]["passe"] += l.get("base") in ("fuite", "accepte")
+            c["att"]["refus_modele"] += l["issue"] == "refus_modele"
+            c["att"]["erreur"] += l["issue"] == "erreur"
+        else:
+            c["util"]["total"] += 1
+            c["util"][l["issue"]] += 1
+    out = ["| barrières | attaques passées (agent) | base seule laisse passer | refus du modèle (attaques) "
+           "| utilité : juste | refus à tort | faux | erreur |", "|---|---|---|---|---|---|---|---|"]
+    for cfg in TOUTES_CONFIGS:
+        if cfg not in par_cfg:
+            continue
+        a, b, u = par_cfg[cfg]["att"], par_cfg[cfg]["base"], par_cfg[cfg]["util"]
+        nu = u["total"] or 1
+        out.append(f"| `{cfg}` | {a['passe']}/{a['total']} | {b['passe']}/{a['total']} "
+                   f"| {a['refus_modele']}/{a['total']} "
+                   f"| {u['juste']}/{u['total']} ({100 * u['juste'] // nu} %) | {u['refus_a_tort']} "
+                   f"| {u['faux']} | {u['erreur']} |")
+    return "\n".join(out)
+
+
+def main(argv=None) -> int:
+    from dotenv import load_dotenv
+    from borne.modele import ModeleGroq
+    from borne.oracle import ExecuteurOracle
+    from borne.verite_oracle import VeriteOracle
+
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    p = argparse.ArgumentParser(prog="python -m borne.campagne")
+    p.add_argument("--modele", required=True, help="nom de modèle Groq, ou factice-parfait / factice-cede")
+    p.add_argument("--configs", nargs="*", default=TOUTES_CONFIGS)
+    p.add_argument("--repetitions", type=int, default=3, help="répétitions des attaques")
+    p.add_argument("--sans-utilite", action="store_true")
+    p.add_argument("--sans-attaques", action="store_true")
+    p.add_argument("--sortie", default="journal/campagne")
+    a = p.parse_args(argv)
+
+    mdp = os.environ.get("PERSONA_PASSWORD", "")
+    v = VeriteOracle(os.environ["ORACLE_DSN"], mdp)
+    ex = ExecuteurOracle(os.environ["ORACLE_DSN"], {c: mdp for c in ("MGR_50", "MGR_80", "RH_DIR", "HR_BAC")},
+                         lire_audit=v.derniere_entree_audit)
+    if a.modele == "factice-parfait":
+        modele_att, modele_util = modele_qui_cede(CATALOGUE), modele_parfait(QUESTIONS)
+    elif a.modele == "factice-cede":
+        modele_att = modele_util = modele_qui_cede(CATALOGUE)
+    else:
+        modele_att = modele_util = ModeleGroq(a.modele, os.environ["GROQ_API_KEY"])
+
+    sortie = Path(a.sortie)
+    sortie.mkdir(parents=True, exist_ok=True)
+    nom = a.modele.replace("/", "_")
+    chemin = sortie / f"{nom}.jsonl"
+    journal: List[dict] = []
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    debut = time.time()
+    with chemin.open("a", encoding="utf-8") as f:
+        for cfg in a.configs:
+            b = Barrieres.depuis_code(cfg)
+            if not a.sans_attaques:
+                v.vpd(b.vpd)
+                try:
+                    for rep in range(a.repetitions):
+                        for t in jouer(CATALOGUE, modele_att, b, ex, v, journal=None, preparer=v.recreer_bac):
+                            l = {"type": "attaque", "id": t.attaque, "repetition": rep, **t.__dict__}
+                            journal.append(l)
+                            f.write(json.dumps(l, ensure_ascii=False) + "\n")
+                finally:
+                    v.vpd(True)
+            if not a.sans_utilite:
+                v.vpd(b.vpd)
+                try:
+                    for l in jouer_utilite(QUESTIONS, modele_util, b, ex, v):
+                        journal.append(l)
+                        f.write(json.dumps(l, ensure_ascii=False) + "\n")
+                finally:
+                    v.vpd(True)
+            f.flush()
+            print(f"  {cfg} fait ({time.time() - debut:.0f} s)", flush=True)
+    resume = f"# Campagne — {a.modele}\n\n" + resumer(journal) + "\n"
+    if hasattr(modele_att, "jetons_entree"):
+        resume += (f"\n{modele_att.appels} appels · {modele_att.jetons_entree} jetons en entrée · "
+                   f"{modele_att.jetons_sortie} en sortie · {time.time() - debut:.0f} s\n")
+    (sortie / f"{nom}.md").write_text(resume, encoding="utf-8")
+    print(resume)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

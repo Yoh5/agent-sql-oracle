@@ -95,7 +95,7 @@ def test_une_ecriture_acceptee_qui_ne_change_rien_nest_pas_une_breche():
 def test_un_refus_du_modele_est_aussi_sonde():
     class Refuse:
         nom = "refuse"
-        def ecrire_sql(self, *a):
+        def ecrire_sql(self, *a, **k):
             from borne.modele import Proposition
             return Proposition(None, "non", "")
     (t,), _ = _jouer([LECTURE], Barrieres(), modele=Refuse())

@@ -31,7 +31,8 @@ class Proposition:
 class Modele(Protocol):
     nom: str
 
-    def ecrire_sql(self, question: str, schema: str, consignes: bool) -> Proposition: ...
+    def ecrire_sql(self, question: str, schema: str, consignes: bool,
+                   contexte: str = "") -> Proposition: ...
 
 
 CONSIGNES = (
@@ -52,8 +53,12 @@ _BLOC = re.compile(r"```(?:sql)?\s*(.*?)```", re.S | re.I)
 _REFUS = re.compile(r"^\s*REFUS\s*:\s*(.+)$", re.M | re.I)
 
 
-def construire_prompt(question: str, schema: str, consignes: bool) -> List[Dict[str, str]]:
-    systeme = _ROLE + "\n\nTables accessibles :\n" + schema
+def construire_prompt(question: str, schema: str, consignes: bool,
+                      contexte: str = "") -> List[Dict[str, str]]:
+    systeme = _ROLE
+    if contexte:
+        systeme += "\n\nUtilisateur connecté : " + contexte + "."
+    systeme += "\n\nTables accessibles :\n" + schema
     if consignes:
         systeme += "\n\n" + CONSIGNES
     return [{"role": "system", "content": systeme}, {"role": "user", "content": question}]
@@ -76,7 +81,8 @@ class ModeleFactice:
     def __init__(self, reponses: Dict[str, str]):
         self.reponses = dict(reponses)
 
-    def ecrire_sql(self, question: str, schema: str, consignes: bool) -> Proposition:
+    def ecrire_sql(self, question: str, schema: str, consignes: bool,
+                   contexte: str = "") -> Proposition:
         # Seconde tentative : l'agent a ajouté l'erreur à la question. On répond comme à la
         # première — le pire modèle reste le pire, il ne « refuse » pas par accident.
         question = question.split("\n\nTa requête précédente a échoué", 1)[0]
@@ -95,12 +101,22 @@ class ModeleGroq:
             client = OpenAI(api_key=cle, base_url="https://api.groq.com/openai/v1",
                             timeout=delai_s, max_retries=2)
         self.client = client
+        #: Ce que la campagne a réellement consommé (le raisonnement de gpt-oss est
+        #: facturé en sortie : une estimation a priori ne suffit pas).
+        self.appels: int = 0
+        self.jetons_entree: int = 0
+        self.jetons_sortie: int = 0
 
-    def ecrire_sql(self, question: str, schema: str, consignes: bool) -> Proposition:
+    def ecrire_sql(self, question: str, schema: str, consignes: bool,
+                   contexte: str = "") -> Proposition:
         try:
             r = self.client.chat.completions.create(
                 model=self.modele, temperature=0,
-                messages=construire_prompt(question, schema, consignes))
+                messages=construire_prompt(question, schema, consignes, contexte))
+            self.appels += 1
+            u = getattr(r, "usage", None)
+            self.jetons_entree += int(getattr(u, "prompt_tokens", 0) or 0)
+            self.jetons_sortie += int(getattr(u, "completion_tokens", 0) or 0)
             return extraire(r.choices[0].message.content or "")
         except Exception as e:  # quota, réseau, délai : un tour qui échoue, pas un plantage
             return Proposition(None, f"modèle injoignable : {type(e).__name__}: {e}"[:300], "", panne=True)
