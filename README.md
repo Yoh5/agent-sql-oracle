@@ -12,13 +12,16 @@ Plan de la phase 1 : `docs/superpowers/plans/2026-11-16-phase1-socle.md`
 
 | tâche | état |
 |---|---|
-| 0–1 dépôt, barrières, profils | fait |
-| 2 classement des instructions (routage, pas sécurité) | fait |
-| 3 modèle Groq + modèle factice qui cède toujours | fait, Groq vérifié |
-| 4 tour et journal de mesure | fait |
-| 5 catalogue de 20 attaques en six familles | fait |
-| 6 agent (graphe LangGraph) | fait |
-| 7–10 Oracle, exécuteur, banc, page | **attend Oracle** |
+| 0–6 dépôt, barrières, profils, classement, modèle (Groq vérifié), journal, 20 attaques, agent | fait, testé |
+| 8 exécuteur Oracle | logique testée hors base ; tests réels en attente |
+| 9 banc d'attaques (modèle / agent / **base seule sondée**) | logique testée hors base ; tests réels en attente |
+| 10 page web | faite, vue dans le navigateur avec un modèle et une base factices |
+| 7 scripts Oracle (comptes, synonymes, copie jetable, VPD, audit) et installateur | **écrits, NON EXÉCUTÉS** : Docker ne démarre pas sur ce poste |
+
+**Rien de ce qui touche Oracle n'a encore tourné.** Les scripts SQL suivent la
+documentation ; ils seront corrigés au premier passage réel.
+
+![La page : une modification reste en attente, rien n'est envoyé à la base](docs/page-attente.png)
 
 ## Installer
 
@@ -53,7 +56,11 @@ Ensuite : lancer Docker Desktop, puis
 
 ```bash
 docker compose up -d            # image container-registry.oracle.com/database/free:latest
-python scripts/installer.py --tout
+python scripts/installer.py --hr     # le schéma HR, depuis le dépôt officiel d'Oracle
+python scripts/installer.py --tout   # comptes, copie jetable, VPD, audit
+pytest                               # les tests Oracle ne se sautent plus
+python -m borne.banc                 # les 20 attaques, modèle qui cède toujours
+uvicorn borne.web:app --port 8030    # la page
 ```
 
 ## Ce que ce projet ne fait pas encore
