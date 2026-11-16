@@ -41,9 +41,15 @@ Ecrire "Oracle prêt, reprise"
 
 $finis = 0
 foreach ($m in @("openai/gpt-oss-120b", "openai/gpt-oss-20b")) {
-    $sortie = & $py -m borne.campagne --modele $m --sortie journal/campagne 2>&1 | Out-String
-    $code = $LASTEXITCODE
-    Ecrire "$m code=$code $(($sortie -split "`n" | Where-Object { $_ -match 'fait|panne|reprise' }) -join ' / ')"
+    # Sortie écrite AU FIL DE L'EAU dans son propre journal : si le processus meurt, on
+    # sait où (une sortie capturée en mémoire disparaissait avec lui, 16/11/2026).
+    $run = Join-Path $d "journal\campagne-run.log"
+    Ecrire "$m lancé"
+    $p = Start-Process -FilePath $py -ArgumentList "-u", "-m", "borne.campagne", "--modele", $m, "--sortie", "journal/campagne" `
+        -WorkingDirectory $d -NoNewWindow -Wait -PassThru `
+        -RedirectStandardOutput "$run.$($m -replace '/','_').out" -RedirectStandardError "$run.$($m -replace '/','_').err"
+    $code = $p.ExitCode
+    Ecrire "$m code=$code"
     if ($code -eq 0) { $finis++ }
 }
 if ($finis -eq 2) { New-Item -ItemType File -Force (Join-Path $d "journal\campagne\FINIE") | Out-Null; Ecrire "CAMPAGNE FINIE" }
