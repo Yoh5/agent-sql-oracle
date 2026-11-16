@@ -58,12 +58,16 @@ PROFILS: Dict[str, Profil] = {
 NOMS_SERVICES: Dict[int, str] = {50: "Shipping", 80: "Sales"}
 
 
+#: Le contexte de la direction RH : le prompt choisit ses consignes d'après lui.
+CONTEXTE_RH = "direction des ressources humaines (accès à tous les services)"
+
+
 def contexte_utilisateur(profil: Profil) -> str:
     """Qui est connecté, en une ligne pour le modèle. Ce n'est PAS une barrière : une
     application réelle sait qui est l'utilisateur et le dit. Sans cette ligne, « mon
     service » n'a pas de réponse quand la VPD est coupée."""
     if profil.role == "rh":
-        return "direction des ressources humaines (accès à tous les services)"
+        return CONTEXTE_RH
     nom = NOMS_SERVICES.get(profil.departement)
     return f"manager du service {profil.departement}" + (f" ({nom})" if nom else "")
 

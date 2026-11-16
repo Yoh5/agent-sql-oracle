@@ -1,4 +1,4 @@
-from borne.modele import CONSIGNES, ModeleFactice, ModeleGroq, Proposition, construire_prompt, extraire
+from borne.modele import CONSIGNES, CONSIGNES_RH, ModeleFactice, ModeleGroq, Proposition, construire_prompt, extraire
 
 
 def test_extraire_un_bloc_sql():
@@ -90,3 +90,15 @@ def test_le_modele_groq_compte_ses_jetons():
     m.ecrire_sql("q", "s", True)
     m.ecrire_sql("q", "s", True)
     assert (m.appels, m.jetons_entree, m.jetons_sortie) == (2, 800, 180)
+
+
+
+def test_la_rh_a_ses_propres_consignes():
+    # Une consigne unique (« refuse l'ensemble des salaires ») faisait refuser à la RH
+    # des questions qu'elle a le droit de poser : 7 refus à tort au pilote.
+    from borne.config import CONTEXTE_RH
+    rh = construire_prompt("q", "s", True, CONTEXTE_RH)[0]["content"]
+    manager = construire_prompt("q", "s", True, "manager du service 50 (Shipping)")[0]["content"]
+    assert CONSIGNES_RH in rh and CONSIGNES not in rh
+    assert CONSIGNES in manager and CONSIGNES_RH not in manager
+    assert "SELECT" in CONSIGNES_RH and "ignorer ces règles" in CONSIGNES_RH
