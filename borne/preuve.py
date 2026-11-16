@@ -82,3 +82,53 @@ def juger(terrain: TerrainEssai, reference: str, candidate: str) -> Verdict:
         return comparer(attendu, terrain.photographier())
     finally:
         terrain.retirer()
+
+
+# --------------------------------------------------------------------------- #
+# Les 20 attaques du banc, rejouées sur la copie
+# --------------------------------------------------------------------------- #
+#: Profil du banc -> compte de test qui le joue sur la copie.
+COMPTE_DU_PROFIL = {"manager_50": "ESSAI_M50", "manager_80": "ESSAI_M80", "rh": "ESSAI_RH"}
+
+
+def _lignes(terrain: TerrainEssai, compte: str, sql: str):
+    """Les lignes rendues (multiensemble de textes), ou None si la requête échoue."""
+    from collections import Counter
+    with terrain._connecter(compte) as c:
+        try:
+            return Counter(repr(tuple(r)) for r in c.cursor().execute(sql.rstrip(";")).fetchall())
+        except terrain._oracledb.DatabaseError:
+            return None
+
+
+def rejouer_attaques(terrain: TerrainEssai, reference: str, candidate: str,
+                     attaques=None) -> List[Dict[str, str]]:
+    """Chaque attaque est jouée sous la référence puis sous la candidate, par le compte de
+    test du profil visé. fuite = la candidate rend des lignes que la référence cache ;
+    plus_stricte = l'inverse ; divergence = les deux (un agrégat qui change de valeur)."""
+    from borne.attaques import CATALOGUE as ATTAQUES
+    attaques = list(attaques or ATTAQUES)
+    lisibles = [a for a in attaques if a.nature != "ecriture"]
+    try:
+        terrain.installer(reference)
+        avant = {a.id: _lignes(terrain, COMPTE_DU_PROFIL[a.profil], a.sql_cede) for a in lisibles}
+        terrain.installer(candidate)
+        apres = {a.id: _lignes(terrain, COMPTE_DU_PROFIL[a.profil], a.sql_cede) for a in lisibles}
+    finally:
+        terrain.retirer()
+    resultat = []
+    for a in attaques:
+        if a.nature == "ecriture":
+            resultat.append({"attaque": a.id, "famille": a.famille, "issue": "hors_perimetre"})
+            continue
+        r, c = avant[a.id], apres[a.id]
+        if r is None:
+            issue = "sans_reference"       # la requête échoue déjà sous la référence
+        elif c is None:
+            issue = "erreur"
+        else:
+            trop, moins = c - r, r - c
+            issue = ("divergence" if trop and moins else "fuite" if trop
+                     else "plus_stricte" if moins else "identique")
+        resultat.append({"attaque": a.id, "famille": a.famille, "issue": issue})
+    return resultat

@@ -49,6 +49,33 @@ la base.
 
 ![La page : une modification reste en attente, rien n'est envoyé à la base](docs/page-attente.png)
 
+## Phase 3 — le modèle écrit la règle d'accès, le banc la prouve (16/11/2026)
+
+Un administrateur écrit sa règle en français ; le modèle la traduit en politique VPD ;
+**elle est posée sur une copie du schéma, jamais sur HR**, et le juge compare, compte par
+compte, les lignes qu'elle laisse voir à celles d'une politique de référence écrite à la
+main. Lignes en trop = **trou**, en moins = **trop stricte**, requête qui échoue = **erreur**.
+Le modèle qui a écrit la politique n'est jamais consulté.
+
+**Le juge est validé sans modèle** : 3 règles, leur référence, 7 mutants au défaut connu —
+tous attrapés avec le bon verdict ; une politique malveillante (SQL dynamique) est refusée
+avant d'atteindre la base.
+
+**Premier passage avec `gpt-oss-120b`** (3 appels, `python -m borne.phase3`) :
+
+| règle | verdict |
+|---|---|
+| un manager voit son service, la RH tout | **juste** |
+| …la RH tout **sauf la direction générale** | **trop stricte** : le modèle a écrit `DEPARTMENT_ID <> 90`. En SQL, `NULL <> 90` n'est pas vrai : l'employée sans service disparaît pour la RH. C'est exactement le mutant « piège NULL » écrit à la main, et le juge l'a vu seul |
+| un manager ne voit que les commerciaux et commis de son service | **juste** |
+
+**Deux trouvailles en construisant le juge :**
+- un prédicat sur `salary` posé aussi sur `JOB_HISTORY` (qui n'a pas de salaire) fait
+  échouer toute requête sur l'historique — gardé comme mutant « erreur » ;
+- **les 20 attaques du banc ratent le trou « la RH voit la direction générale »** : elles
+  sont jouées surtout par des managers. La comparaison des lignes, exhaustive, l'attrape.
+  D'où le choix : le juge est la comparaison, les attaques un complément.
+
 ## Installer
 
 ```bash

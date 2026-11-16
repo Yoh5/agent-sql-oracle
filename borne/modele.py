@@ -107,6 +107,10 @@ class ModeleFactice:
         return Proposition(sql, None, sql)
 
 
+class ModeleEnPanne(RuntimeError):
+    """Le modèle n'a pas répondu. Jamais un refus : une absence de mesure."""
+
+
 class ModeleGroq:
     #: Groq limite par MINUTE (8 000 jetons/min sur ce compte, 16/11/2026) et dit dans son
     #: message quand réessayer. Sans attente, six configurations de la campagne sont
@@ -142,14 +146,14 @@ class ModeleGroq:
         s = float(valeur) / (1000 if unite == "ms" else 1)
         return s + 60 * int(minutes or 0) + 3600 * int(heures or 0)
 
-    def ecrire_sql(self, question: str, schema: str, consignes: bool,
-                   contexte: str = "") -> Proposition:
+    def completer(self, messages: List[Dict[str, str]]) -> str:
+        """Un appel au modèle, avec attente sur la limite PAR MINUTE. Lève ModeleEnPanne si
+        le modèle ne répond pas (quota journalier, réseau, modèle retiré) : à l'appelant de
+        décider que ce n'est pas un refus. Partagé par l'agent et le générateur de politiques."""
         derniere: Optional[Exception] = None
         for _ in range(self.ESSAIS_LIMITE):
             try:
-                r = self.client.chat.completions.create(
-                    model=self.modele, temperature=0,
-                    messages=construire_prompt(question, schema, consignes, contexte))
+                r = self.client.chat.completions.create(model=self.modele, temperature=0, messages=messages)
             except Exception as e:
                 derniere = e
                 if type(e).__name__ == "RateLimitError" or "429" in str(e):
@@ -163,7 +167,13 @@ class ModeleGroq:
             u = getattr(r, "usage", None)
             self.jetons_entree += int(getattr(u, "prompt_tokens", 0) or 0)
             self.jetons_sortie += int(getattr(u, "completion_tokens", 0) or 0)
-            return extraire(r.choices[0].message.content or "")
-        # Quota qui ne passe pas, réseau, délai : un tour qui échoue, pas un plantage.
-        e = derniere
-        return Proposition(None, f"modèle injoignable : {type(e).__name__}: {e}"[:300], "", panne=True)
+            return r.choices[0].message.content or ""
+        raise ModeleEnPanne(f"modèle injoignable : {type(derniere).__name__}: {derniere}"[:300])
+
+    def ecrire_sql(self, question: str, schema: str, consignes: bool,
+                   contexte: str = "") -> Proposition:
+        try:
+            return extraire(self.completer(construire_prompt(question, schema, consignes, contexte)))
+        except ModeleEnPanne as e:
+            # Quota qui ne passe pas, réseau, délai : un tour qui échoue, pas un plantage.
+            return Proposition(None, str(e), "", panne=True)
