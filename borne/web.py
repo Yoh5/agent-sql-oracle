@@ -53,6 +53,10 @@ def creer_app(modele: Optional[Modele] = None, executeur: Optional[Executeur] = 
             load_dotenv()
             mdp = os.environ.get("PERSONA_PASSWORD", "")
             v = VeriteOracle(os.environ["ORACLE_DSN"], mdp)
+            # La règle d'accès peut être restée COUPÉE : une campagne interrompue ne passe
+            # pas par son `finally` (vu le 16/11/2026, VPD_EMP et VPD_JOB à NO). La page ne
+            # sert jamais une question avant de l'avoir rallumée.
+            v.vpd(True)
             etat["modele"] = etat["modele"] or ModeleGroq(
                 os.environ.get("MODELE", "openai/gpt-oss-120b"), os.environ["GROQ_API_KEY"])
             etat["executeur"] = etat["executeur"] or ExecuteurOracle(

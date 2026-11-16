@@ -68,6 +68,26 @@ def jouer_utilite(questions: Sequence[QuestionUtile], modele: Modele, barrieres:
     return lignes
 
 
+def preparer_reprise(chemin: Path, configs: Sequence[str], attendu_attaques: int,
+                     attendu_utilite: int) -> List[str]:
+    """Reprendre une campagne interrompue : saute les configurations complètes dans le
+    journal, EFFACE celles à moitié faites (sinon leurs tours compteraient double) et
+    rend celles qui restent à jouer."""
+    if not chemin.exists():
+        return list(configs)
+    lignes = [json.loads(l) for l in chemin.read_text(encoding="utf-8").splitlines() if l.strip()]
+    compte: Dict[str, Counter] = {}
+    for l in lignes:
+        compte.setdefault(l["barrieres"], Counter())[l["type"]] += 1
+    completes = {c for c, n in compte.items()
+                 if n["attaque"] >= attendu_attaques and n["utilite"] >= attendu_utilite}
+    gardees = [l for l in lignes if l["barrieres"] in completes]
+    if len(gardees) != len(lignes):
+        chemin.write_text("".join(json.dumps(l, ensure_ascii=False) + "\n" for l in gardees),
+                          encoding="utf-8")
+    return [c for c in configs if c not in completes]
+
+
 def resumer(journal: Sequence[dict]) -> str:
     """Un tableau par configuration : attaques passées (agent / base seule) et utilité."""
     par_cfg: Dict[str, Dict[str, Counter]] = {}
@@ -114,6 +134,9 @@ def main(argv=None) -> int:
 
     mdp = os.environ.get("PERSONA_PASSWORD", "")
     v = VeriteOracle(os.environ["ORACLE_DSN"], mdp)
+    # Une exécution interrompue laisse la règle d'accès coupée (son `finally` ne s'exécute
+    # pas) : on repart TOUJOURS d'une base protégée.
+    v.vpd(True)
     ex = ExecuteurOracle(os.environ["ORACLE_DSN"], {c: mdp for c in ("MGR_50", "MGR_80", "RH_DIR", "HR_BAC")},
                          lire_audit=v.derniere_entree_audit)
     if a.modele == "factice-parfait":
@@ -127,12 +150,17 @@ def main(argv=None) -> int:
     sortie.mkdir(parents=True, exist_ok=True)
     nom = a.modele.replace("/", "_")
     chemin = sortie / f"{nom}.jsonl"
+    configs = preparer_reprise(chemin, a.configs,
+                               0 if a.sans_attaques else a.repetitions * len(CATALOGUE),
+                               0 if a.sans_utilite else len(QUESTIONS))
+    if configs != list(a.configs):
+        print(f"  reprise : déjà faites {sorted(set(a.configs) - set(configs))}", flush=True)
     journal: List[dict] = []
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     debut = time.time()
     with chemin.open("a", encoding="utf-8") as f:
-        for cfg in a.configs:
+        for cfg in configs:
             b = Barrieres.depuis_code(cfg)
             if not a.sans_attaques:
                 v.vpd(b.vpd)
@@ -154,9 +182,11 @@ def main(argv=None) -> int:
                     v.vpd(True)
             f.flush()
             print(f"  {cfg} fait ({time.time() - debut:.0f} s)", flush=True)
-    resume = f"# Campagne — {a.modele}\n\n" + resumer(journal) + "\n"
+    # Le résumé porte sur TOUT le journal, reprises comprises.
+    tout = [json.loads(l) for l in chemin.read_text(encoding="utf-8").splitlines() if l.strip()]
+    resume = f"# Campagne — {a.modele}\n\n" + resumer(tout) + "\n"
     if hasattr(modele_att, "jetons_entree"):
-        resume += (f"\n{modele_att.appels} appels · {modele_att.jetons_entree} jetons en entrée · "
+        resume += (f"\nCette exécution : {modele_att.appels} appels · {modele_att.jetons_entree} jetons en entrée · "
                    f"{modele_att.jetons_sortie} en sortie · {time.time() - debut:.0f} s\n")
     (sortie / f"{nom}.md").write_text(resume, encoding="utf-8")
     print(resume)

@@ -121,6 +121,9 @@ def main(argv=None) -> int:
     attaques = [x for x in CATALOGUE if not a.attaques or x.id in a.attaques]
     mdp = os.environ.get("PERSONA_PASSWORD", "")
     v = VeriteOracle(os.environ["ORACLE_DSN"], mdp)
+    # Une exécution interrompue laisse la règle d'accès coupée (son `finally` ne s'exécute
+    # pas) : on repart TOUJOURS d'une base protégée.
+    v.vpd(True)
     ex = ExecuteurOracle(os.environ["ORACLE_DSN"], {c: mdp for c in ("MGR_50", "MGR_80", "RH_DIR", "HR_BAC")},
                          lire_audit=v.derniere_entree_audit)
     modele = (modele_qui_cede(attaques) if a.modele == "factice"
