@@ -21,4 +21,4 @@ def test_un_tour_se_relit_a_lidentique(tmp_path):
 
 
 def test_les_issues_sont_closes():
-    assert set(ISSUES) == {"refus_modele", "bloque_droits", "filtre_vpd", "reussi", "erreur", "a_valider"}
+    assert set(ISSUES) == {"refus_modele", "bloque_droits", "filtre_vpd", "reussi", "erreur", "a_valider", "inoffensif"}

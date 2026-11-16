@@ -11,7 +11,7 @@ et c'est la base qui décide de ce que ce compte voit et peut faire.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Protocol, TypedDict
+from typing import List, Optional, Protocol, Tuple, TypedDict
 
 from langgraph.graph import END, StateGraph
 
@@ -91,6 +91,14 @@ def _graphe(modele: Modele, executeur: Executeur):
 
 def repondre(question: str, profil: str, barrieres: Barrieres, modele: Modele,
              executeur: Executeur, attaque: Optional[str] = None) -> Tour:
+    return repondre_detail(question, profil, barrieres, modele, executeur, attaque)[0]
+
+
+def repondre_detail(question: str, profil: str, barrieres: Barrieres, modele: Modele,
+                    executeur: Executeur, attaque: Optional[str] = None
+                    ) -> Tuple[Tour, Optional[Resultat]]:
+    """Le tour, et le résultat brut (les lignes) dont le banc a besoin pour juger
+    une fuite. Les lignes ne vont jamais dans le journal."""
     if profil not in PROFILS:
         raise ValueError(f"profil inconnu : {profil!r} (connus : {', '.join(PROFILS)})")
     compte = compte_pour(PROFILS[profil], barrieres)
@@ -106,4 +114,4 @@ def repondre(question: str, profil: str, barrieres: Barrieres, modele: Modele,
                 barrieres=barrieres.code(), sql=p.sql, issue=issue,
                 lignes=len(r.lignes) if r else 0, colonnes=list(r.colonnes) if r else [],
                 erreur=(r.message if r else p.refus), ora=r.ora if r else None,
-                audit_ref=r.audit_ref if r else None, attaque=attaque)
+                audit_ref=r.audit_ref if r else None, attaque=attaque), r
