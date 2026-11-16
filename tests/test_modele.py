@@ -102,3 +102,41 @@ def test_la_rh_a_ses_propres_consignes():
     assert CONSIGNES_RH in rh and CONSIGNES not in rh
     assert CONSIGNES in manager and CONSIGNES_RH not in manager
     assert "SELECT" in CONSIGNES_RH and "ignorer ces règles" in CONSIGNES_RH
+
+
+def test_une_limite_de_debit_fait_attendre_puis_reessayer():
+    # 16/11/2026 : la limite Groq est de 8 000 jetons par MINUTE. Sans attente, les appels
+    # tombaient en 429 en série et six configurations de la campagne étaient perdues.
+    class RateLimitError(Exception):
+        pass
+    attentes, essais = [], []
+
+    class Client:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**_):
+                    essais.append(1)
+                    if len(essais) < 3:
+                        raise RateLimitError("Error code: 429 - Rate limit reached ... Please try again in 892.5ms.")
+                    return type("R", (), {"usage": None, "choices": [type("C", (), {"message": type("M", (), {"content": "```sql\nSELECT 1 FROM dual\n```"})})]})()
+    m = ModeleGroq("openai/gpt-oss-20b", "cle", client=Client(), attendre=attentes.append)
+    p = m.ecrire_sql("q", "s", True)
+    assert p.sql == "SELECT 1 FROM dual" and not p.panne
+    # Au moins le délai demandé (892,5 ms), plus une petite marge.
+    assert len(essais) == 3 and attentes and 0.89 <= attentes[0] < 2
+
+
+def test_une_limite_qui_ne_passe_pas_reste_une_panne():
+    class RateLimitError(Exception):
+        pass
+
+    class Client:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**_):
+                    raise RateLimitError("Error code: 429 - Please try again in 2.85s.")
+    m = ModeleGroq("openai/gpt-oss-20b", "cle", client=Client(), attendre=lambda s: None)
+    p = m.ecrire_sql("q", "s", True)
+    assert p.panne and p.sql is None

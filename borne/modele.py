@@ -14,8 +14,9 @@ aux barrières de la base.
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Callable, Dict, List, Optional, Protocol
 
 from borne.config import CONTEXTE_RH
 
@@ -107,7 +108,13 @@ class ModeleFactice:
 
 
 class ModeleGroq:
-    def __init__(self, modele: str, cle: str, delai_s: float = 30.0, client: Any = None):
+    #: Groq limite par MINUTE (8 000 jetons/min sur ce compte, 16/11/2026) et dit dans son
+    #: message quand réessayer. Sans attente, six configurations de la campagne sont
+    #: tombées en 429 en série.
+    ESSAIS_LIMITE = 8
+
+    def __init__(self, modele: str, cle: str, delai_s: float = 30.0, client: Any = None,
+                 attendre: Optional[Callable[[float], None]] = None):
         self.nom = f"groq:{modele}"
         self.modele = modele
         if client is None:
@@ -115,22 +122,42 @@ class ModeleGroq:
             client = OpenAI(api_key=cle, base_url="https://api.groq.com/openai/v1",
                             timeout=delai_s, max_retries=2)
         self.client = client
+        self._attendre = attendre or time.sleep
         #: Ce que la campagne a réellement consommé (le raisonnement de gpt-oss est
         #: facturé en sortie : une estimation a priori ne suffit pas).
         self.appels: int = 0
         self.jetons_entree: int = 0
         self.jetons_sortie: int = 0
 
+    @staticmethod
+    def _delai_demande(message: str) -> float:
+        """« Please try again in 892.5ms » / « in 2.85s » / « in 1m3.2s » -> secondes."""
+        m = re.search(r"try again in\s+(?:(\d+)m)?([\d.]+)(ms|s)", message)
+        if not m:
+            return 5.0
+        minutes, valeur, unite = m.groups()
+        s = float(valeur) / (1000 if unite == "ms" else 1)
+        return s + 60 * int(minutes or 0)
+
     def ecrire_sql(self, question: str, schema: str, consignes: bool,
                    contexte: str = "") -> Proposition:
-        try:
-            r = self.client.chat.completions.create(
-                model=self.modele, temperature=0,
-                messages=construire_prompt(question, schema, consignes, contexte))
+        derniere: Optional[Exception] = None
+        for _ in range(self.ESSAIS_LIMITE):
+            try:
+                r = self.client.chat.completions.create(
+                    model=self.modele, temperature=0,
+                    messages=construire_prompt(question, schema, consignes, contexte))
+            except Exception as e:
+                derniere = e
+                if type(e).__name__ == "RateLimitError" or "429" in str(e):
+                    self._attendre(self._delai_demande(str(e)) + 0.5)
+                    continue
+                break                       # autre panne : inutile d'insister
             self.appels += 1
             u = getattr(r, "usage", None)
             self.jetons_entree += int(getattr(u, "prompt_tokens", 0) or 0)
             self.jetons_sortie += int(getattr(u, "completion_tokens", 0) or 0)
             return extraire(r.choices[0].message.content or "")
-        except Exception as e:  # quota, réseau, délai : un tour qui échoue, pas un plantage
-            return Proposition(None, f"modèle injoignable : {type(e).__name__}: {e}"[:300], "", panne=True)
+        # Quota qui ne passe pas, réseau, délai : un tour qui échoue, pas un plantage.
+        e = derniere
+        return Proposition(None, f"modèle injoignable : {type(e).__name__}: {e}"[:300], "", panne=True)

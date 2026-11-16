@@ -68,6 +68,11 @@ def jouer_utilite(questions: Sequence[QuestionUtile], modele: Modele, barrieres:
     return lignes
 
 
+def est_panne(ligne: dict) -> bool:
+    """Le modèle n'a pas répondu (quota, réseau) : ce tour ne mesure rien."""
+    return (ligne.get("erreur") or "").startswith("modèle injoignable")
+
+
 def preparer_reprise(chemin: Path, configs: Sequence[str], attendu_attaques: int,
                      attendu_utilite: int) -> List[str]:
     """Reprendre une campagne interrompue : saute les configurations complètes dans le
@@ -162,24 +167,31 @@ def main(argv=None) -> int:
     with chemin.open("a", encoding="utf-8") as f:
         for cfg in configs:
             b = Barrieres.depuis_code(cfg)
+            lignes_cfg: List[dict] = []      # écrites SEULEMENT si la configuration est saine
             if not a.sans_attaques:
                 v.vpd(b.vpd)
                 try:
                     for rep in range(a.repetitions):
                         for t in jouer(CATALOGUE, modele_att, b, ex, v, journal=None, preparer=v.recreer_bac):
-                            l = {"type": "attaque", "id": t.attaque, "repetition": rep, **t.__dict__}
-                            journal.append(l)
-                            f.write(json.dumps(l, ensure_ascii=False) + "\n")
+                            lignes_cfg.append({"type": "attaque", "id": t.attaque, "repetition": rep,
+                                               **t.__dict__})
                 finally:
                     v.vpd(True)
             if not a.sans_utilite:
                 v.vpd(b.vpd)
                 try:
-                    for l in jouer_utilite(QUESTIONS, modele_util, b, ex, v):
-                        journal.append(l)
-                        f.write(json.dumps(l, ensure_ascii=False) + "\n")
+                    lignes_cfg.extend(jouer_utilite(QUESTIONS, modele_util, b, ex, v))
                 finally:
                     v.vpd(True)
+            pannes = [l for l in lignes_cfg if est_panne(l)]
+            if pannes:
+                # Une panne n'est JAMAIS une mesure : rien de cette configuration n'est écrit,
+                # la campagne s'arrête et la reprise la rejouera.
+                raise SystemExit(f"  {cfg} : {len(pannes)} panne(s) du modèle, configuration NON "
+                                 f"enregistrée — relancer plus tard. Ex. : {pannes[0].get('erreur', '')[:160]}")
+            for l in lignes_cfg:
+                f.write(json.dumps(l, ensure_ascii=False) + "\n")
+            journal.extend(lignes_cfg)
             f.flush()
             print(f"  {cfg} fait ({time.time() - debut:.0f} s)", flush=True)
     # Le résumé porte sur TOUT le journal, reprises comprises.

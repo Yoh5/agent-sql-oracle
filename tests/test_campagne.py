@@ -33,3 +33,10 @@ def test_la_reprise_saute_le_fait_et_efface_le_partiel(tmp_path):
     assert restantes == ["C1V0P1", "C0V0P0"]
     gardees = [json.loads(l)["barrieres"] for l in j.read_text(encoding="utf-8").splitlines()]
     assert set(gardees) == {"C1V1P1"} and len(gardees) == 150     # le partiel est effacé
+
+
+def test_une_panne_du_modele_n_est_pas_une_ligne_de_mesure():
+    from borne.campagne import est_panne
+    assert est_panne({"erreur": "modèle injoignable : RateLimitError: Error code: 429"})
+    assert not est_panne({"erreur": "ORA-01476: divisor is equal to zero"})
+    assert not est_panne({"erreur": None})
