@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 RACINE = Path(__file__).resolve().parents[1]
 CONTENEUR = "oracle-free"
 DEPOT_SCHEMAS = "https://github.com/oracle-samples/db-sample-schemas/archive/refs/heads/main.zip"
-SCRIPTS = ["00_comptes.sql", "01_hr_bac.sql", "02_vpd.sql", "03_audit.sql"]
+SCRIPTS = ["00_comptes.sql", "01_hr_bac.sql", "02_vpd.sql", "03_audit.sql", "04_essai.sql"]
 
 
 def blocs(texte: str):
@@ -91,6 +91,7 @@ def main(argv=None) -> int:
     p.add_argument("--hr", action="store_true")
     p.add_argument("--tout", action="store_true")
     p.add_argument("--bac", action="store_true")
+    p.add_argument("--essai", action="store_true", help="phase 3 : remet le terrain d'essai à neuf")
     a = p.parse_args(argv)
     dsn = os.environ.get("ORACLE_DSN", "localhost:1522/FREEPDB1")
     sys_mdp, mdp = os.environ["ORACLE_PWD"], os.environ["PERSONA_PASSWORD"]
@@ -98,6 +99,8 @@ def main(argv=None) -> int:
         charger_hr(sys_mdp, mdp)
     if a.tout:
         executer_scripts(dsn, sys_mdp, mdp, SCRIPTS)
+    if a.essai:
+        executer_scripts(dsn, sys_mdp, mdp, ["04_essai.sql"])
     if a.bac:
         executer_scripts(dsn, sys_mdp, mdp, ["01_hr_bac.sql"])
     return 0
