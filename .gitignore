@@ -5,3 +5,6 @@ __pycache__/
 journal/
 .pytest_cache/
 .schemas/
+
+# schémas d exemple d Oracle, téléchargés par scripts/installer.py
+.schemas/
