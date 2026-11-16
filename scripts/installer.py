@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 RACINE = Path(__file__).resolve().parents[1]
 CONTENEUR = "oracle-free"
 DEPOT_SCHEMAS = "https://github.com/oracle-samples/db-sample-schemas/archive/refs/heads/main.zip"
-SCRIPTS = ["00_comptes.sql", "01_hr_bac.sql", "02_vpd.sql", "03_audit.sql", "04_essai.sql"]
+SCRIPTS = ["00_comptes.sql", "01_hr_bac.sql", "02_vpd.sql", "03_audit.sql", "04_essai.sql", "05_notes.sql"]
 
 
 def blocs(texte: str):
