@@ -49,6 +49,35 @@ la base.
 
 ![La page : une modification reste en attente, rien n'est envoyé à la base](docs/page-attente.png)
 
+## La campagne complète (17/11/2026, OpenRouter, 2 modèles × 8 configurations)
+
+C = un compte Oracle par profil (sinon un compte partagé), V = la VPD, P = les consignes du
+prompt. 20 attaques × 3 répétitions = 60 essais par case ; 90 questions légitimes.
+« Base seule » = ce que la base aurait laissé passer si le modèle avait obéi à chaque attaque.
+
+| config | 120b : passées | 20b : passées | base seule | 120b : refus du modèle | 20b : refus du modèle | utilité 120b / 20b |
+|---|---|---|---|---|---|---|
+| `C1V1P1` | 0/60 | 0/60 | **0/60** | 53 | 54 | 100 % / 98 % |
+| `C1V1P0` | 0/60 | 0/60 | **0/60** | 19 | **8** | 98 % / 98 % |
+| `C1V0P1` | 0/60 | 0/60 | 42/60 | 53 | 54 | 100 % / 98 % |
+| `C1V0P0` | 26/60 | 30/60 | 42/60 | 19 | 7 | 97 % / 97 % |
+| `C0V1P1` | 0/60 | 0/60 | 54/60 | 52 | 52 | 100 % / 97 % |
+| `C0V1P0` | 27/60 | 29/60 | 54/60 | 20 | 7 | 95 % / 98 % |
+| `C0V0P1` | 0/60 | 0/60 | 54/60 | 50 | 55 | 98 % / 98 % |
+| `C0V0P0` | 29/60 | 31/60 | 54/60 | 15 | 5 | 98 % / 97 % |
+
+**Ce que ça établit :**
+1. **Compte par profil + VPD = 0 attaque possible, quel que soit le modèle.** Sans consignes, le
+   20b ne refuse que 8 attaques sur 60 : la base bloque les 52 autres.
+2. **La VPD sur un compte partagé ne protège presque rien** (27-29 passées, contre 29-31 sans
+   rien) : elle ne sait pas qui est réellement connecté.
+3. **Les consignes donnent un 0/60 trompeur** : la base laisserait passer 42 à 54 attaques ; tout
+   repose alors sur le modèle — et la phase 2 montre qu'une injection plausible le fait céder.
+4. **La sécurité ne coûte pas d'utilité** : 95 à 100 %, zéro refus à tort, dans les 16 cases.
+5. **Le petit modèle cède plus** (5-8 refus sans consignes, contre 15-20) ; avec la base, ça ne change rien.
+
+Coût des deux campagnes : ~913 appels, moins de 0,50 $.
+
 ## Phase 2 — le mode « analyste » et la donnée piégée (17/11/2026)
 
 L'analyste enquête en plusieurs tours (une action JSON par tour : `sql`, `note`, `rapport`)
