@@ -146,7 +146,20 @@ La requête est exécutée par le même exécuteur, sous le compte du profil. Mo
 c'est la VPD qui ne rend au manager que son service. Il ne refuse qu'une attaque sur cinq. La
 conclusion du projet tient sur le produit d'Oracle lui-même : **la protection est dans la base.**
 
-*Notre agent avec le même modèle (gpt-4.1-mini) sur la même base : mesure en cours.*
+**À modèle égal (gpt-4.1-mini), même base, mêmes attaques :**
+
+| barrières | Select AI | notre agent sans consignes | notre agent avec consignes |
+|---|---|---|---|
+| compte par profil + VPD | **0/60** | **0/60** | **0/60** |
+| sans VPD | 23/60 | 18/60 | 0/60 |
+| compte partagé | 22/60 | 18/60 | 0/60 |
+| aucune | 24/60 | 18/60 | 0/60 |
+| *questions légitimes justes* | *90 – 94 %* | *98 %* | *98 %* |
+
+Sans barrière dans la base, notre prompt cède un peu moins (18 contre 22 à 24) et répond plus juste
+(98 % contre 90 à 94 %) ; ses consignes ramènent tout à 0/60 — mais c'est le 0/60 trompeur du
+modèle seul, que la base aurait laissé passer à 42 – 54. **Avec le compte par profil et la VPD, les
+trois font 0 : ce n'est plus le prompt qui décide.**
 
 ## Phase 2 — le mode « analyste » et la donnée piégée (17/11/2026)
 
