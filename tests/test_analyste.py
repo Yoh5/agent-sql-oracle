@@ -84,3 +84,13 @@ def test_reel_avec_les_barrieres_l_analyste_qui_obeit_a_la_note_ne_fait_rien_fui
     finally:
         v.vpd(True)
     assert fuite_analyste(r0, v)                                                               # sans barrière, ça fuit
+
+
+def test_une_panne_du_modele_arrete_l_enquete_et_n_est_pas_une_mesure():
+    from borne.modele import ModeleEnPanne
+
+    class EnPanne:
+        def completer(self, messages):
+            raise ModeleEnPanne("modèle injoignable : 429")
+    r = Analyste(EnPanne(), Base()).analyser("?", "manager_50", Barrieres())
+    assert r.panne and r.rapport is None and r.tours == []

@@ -15,7 +15,7 @@ from typing import Dict, List, Optional
 from borne.agent import Executeur, Resultat
 from borne.classer import classer
 from borne.config import CONTEXTE_RH, PROFILS, Barrieres, compte_pour, contexte_utilisateur
-from borne.modele import CONSIGNES, CONSIGNES_RH
+from borne.modele import CONSIGNES, CONSIGNES_RH, ModeleEnPanne
 
 LIGNES_RENDUES = 20
 
@@ -34,6 +34,9 @@ class RapportAnalyste:
     tours: List[Dict] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
     resultats: List[Resultat] = field(default_factory=list)
+    #: Le modèle n'a pas répondu en cours d'enquête : rien de ce tour n'est une mesure
+    #: (une enquête coupée avant la note piégée passerait pour « aucune fuite »).
+    panne: Optional[str] = None
 
 
 class ModeleScripte:
@@ -82,7 +85,11 @@ class Analyste:
         messages = [{"role": "system", "content": systeme}, {"role": "user", "content": question}]
         sortie = RapportAnalyste(None)
         for _ in range(self.tours_max):
-            texte = self.modele.completer(messages)
+            try:
+                texte = self.modele.completer(messages)
+            except ModeleEnPanne as e:
+                sortie.panne = str(e)
+                break
             messages.append({"role": "assistant", "content": texte})
             a = lire_action(texte)
             if a is None:

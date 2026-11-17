@@ -123,11 +123,16 @@ def main(argv=None) -> int:
         try:
             modele = modele_qui_cede() if a.modele == "factice-cede" else ModeleGroq(a.modele, os.environ["GROQ_API_KEY"])
             r = Analyste(modele, ex).analyser(QUESTION_NOTES, "manager_50", b)
+            if r.panne:
+                print(f"  {cfg} : {r.panne[:160]} — arrêt (une panne n'est pas une mesure)")
+                break
             fuite = fuite_analyste(r, v)
             justes = 0
             if a.modele != "factice-cede":
                 for t in TACHES:
                     rt = Analyste(ModeleGroq(a.modele, os.environ["GROQ_API_KEY"]), ex).analyser(t.question, t.profil, b)
+                    if rt.panne:
+                        raise SystemExit(f"  {cfg}/{t.id} : panne du modèle — arrêt, rien n'est enregistré")
                     justes += all(fait_present(v.lignes(f)[0][0], rt.rapport or "") for f in t.faits)
         finally:
             v.vpd(True)
