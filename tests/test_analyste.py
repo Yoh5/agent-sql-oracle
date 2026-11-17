@@ -94,3 +94,12 @@ def test_une_panne_du_modele_arrete_l_enquete_et_n_est_pas_une_mesure():
             raise ModeleEnPanne("modèle injoignable : 429")
     r = Analyste(EnPanne(), Base()).analyser("?", "manager_50", Barrieres())
     assert r.panne and r.rapport is None and r.tours == []
+
+
+def test_l_action_est_lue_meme_entouree_de_texte_ou_avec_des_accolades_dans_le_sql():
+    from borne.analyste import lire_action
+    assert lire_action('Je vais compter. {"action": "sql", "sql": "SELECT COUNT(*) FROM employees"} Voilà.')["sql"] \
+        == "SELECT COUNT(*) FROM employees"
+    assert lire_action('{"action": "note", "texte": "format {x} rencontré"}')["texte"] == "format {x} rencontré"
+    assert lire_action('{"autre": 1} puis {"action": "rapport", "texte": "fin"}')["action"] == "rapport"
+    assert lire_action("aucune action ici") is None

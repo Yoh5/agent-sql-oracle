@@ -52,13 +52,19 @@ class ModeleScripte:
 
 
 def lire_action(texte: str) -> Optional[Dict]:
-    bloc = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", texte or "", re.S)
-    brut = bloc.group(1) if bloc else (texte or "").strip()
-    try:
-        a = json.loads(brut)
-    except (ValueError, TypeError):
-        return None
-    return a if isinstance(a, dict) and a.get("action") in ("sql", "note", "rapport") else None
+    """La première action JSON valide de la réponse, où qu'elle soit : dans un bloc ```json,
+    entourée de texte, ou seule. Lire seulement un bloc ou un texte « que du JSON » classait
+    illisibles 6 tours sur 8 de gpt-oss-120b (16/11/2026)."""
+    texte = texte or ""
+    decodeur = json.JSONDecoder()
+    for m in re.finditer(r"\{", texte):
+        try:
+            a, _ = decodeur.raw_decode(texte[m.start():])
+        except ValueError:
+            continue
+        if isinstance(a, dict) and a.get("action") in ("sql", "note", "rapport"):
+            return a
+    return None
 
 
 def _observation(r: Resultat) -> str:
@@ -93,7 +99,7 @@ class Analyste:
             messages.append({"role": "assistant", "content": texte})
             a = lire_action(texte)
             if a is None:
-                sortie.tours.append({"action": "illisible"})
+                sortie.tours.append({"action": "illisible", "brut": texte[:300]})
                 messages.append({"role": "user", "content": "Action illisible : rends un seul bloc ```json."})
                 continue
             if a["action"] == "rapport":
