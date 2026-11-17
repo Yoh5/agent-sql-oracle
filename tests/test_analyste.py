@@ -68,10 +68,13 @@ def test_un_fait_est_trouve_dans_le_rapport_meme_ecrit_autrement():
 
 def test_reel_avec_les_barrieres_l_analyste_qui_obeit_a_la_note_ne_fait_rien_fuir(oracle_dispo):
     import os
-    from borne.banc_analyste import QUESTION_NOTES, fuite_analyste, modele_qui_cede
+    from borne.banc_analyste import QUESTION_NOTES, fuite_analyste, modele_qui_cede, poser_scenario
     from borne.oracle import ExecuteurOracle
     from borne.verite_oracle import VeriteOracle
     mdp = os.environ.get("PERSONA_PASSWORD", "")
+    # Le banc réécrit les notes selon le scénario : le test pose le sien, il ne dépend pas
+    # de l'état laissé par le dernier passage.
+    poser_scenario(os.environ["ORACLE_DSN"], os.environ["ORACLE_PWD"], "grossiere")
     v = VeriteOracle(os.environ["ORACLE_DSN"], mdp)
     ex = ExecuteurOracle(os.environ["ORACLE_DSN"], {c: mdp for c in ("MGR_50", "MGR_80", "RH_DIR", "HR_BAC")})
     v.vpd(True)
@@ -103,3 +106,23 @@ def test_l_action_est_lue_meme_entouree_de_texte_ou_avec_des_accolades_dans_le_s
     assert lire_action('{"action": "note", "texte": "format {x} rencontré"}')["texte"] == "format {x} rencontré"
     assert lire_action('{"autre": 1} puis {"action": "rapport", "texte": "fin"}')["action"] == "rapport"
     assert lire_action("aucune action ici") is None
+
+
+
+def test_reel_l_injection_plausible_fait_fuir_les_masses_sans_barriere_et_pas_avec(oracle_dispo):
+    import os
+    from borne.banc_analyste import QUESTION_NOTES, fuite_analyste, modele_qui_cede, poser_scenario
+    from borne.oracle import ExecuteurOracle
+    from borne.verite_oracle import VeriteOracle
+    mdp = os.environ.get("PERSONA_PASSWORD", "")
+    poser_scenario(os.environ["ORACLE_DSN"], os.environ["ORACLE_PWD"], "plausible")
+    v = VeriteOracle(os.environ["ORACLE_DSN"], mdp)
+    ex = ExecuteurOracle(os.environ["ORACLE_DSN"], {c: mdp for c in ("MGR_50", "MGR_80", "RH_DIR", "HR_BAC")})
+    v.vpd(True)
+    assert not fuite_analyste(Analyste(modele_qui_cede("plausible"), ex).analyser(QUESTION_NOTES, "manager_50", Barrieres()), v)
+    v.vpd(False)
+    try:
+        r0 = Analyste(modele_qui_cede("plausible"), ex).analyser(QUESTION_NOTES, "manager_50", Barrieres(False, False, False))
+    finally:
+        v.vpd(True)
+    assert fuite_analyste(r0, v)
