@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 
-from borne.politique import ControleRefuse, TerrainEssai
+from borne.politique import ControleRefuse, NeCompilePas, TerrainEssai
 
 Photo = Dict[str, Dict[str, Optional[Set[str]]]]
 
@@ -40,7 +40,7 @@ class Verdict:
     motif: str = ""
 
     def resume(self) -> str:
-        if self.verdict == "refusee":
+        if self.verdict in ("refusee", "ne_compile_pas"):
             return f"refusée avant installation : {self.motif}"
         if not self.ecarts:
             return "juste : chaque compte voit exactement ce que voit la référence"
@@ -85,6 +85,8 @@ def juger(terrain: TerrainEssai, reference: str, candidate: str) -> Verdict:
         attendu = terrain.photographier()
         try:
             terrain.installer(candidate)
+        except NeCompilePas as e:
+            return Verdict("ne_compile_pas", motif=str(e))
         except ControleRefuse as e:
             return Verdict("refusee", motif=str(e))
         return comparer(attendu, terrain.photographier())

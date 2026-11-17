@@ -35,7 +35,7 @@ def colonnes_protegees(terrain: TerrainEssai) -> Dict[str, List[str]]:
 
 def eprouver(regle, source: str, terrain: TerrainEssai) -> dict:
     v = juger(terrain, regle.reference, source)
-    attaques = [] if v.verdict == "refusee" else rejouer_attaques(terrain, regle.reference, source)
+    attaques = [] if v.verdict in ("refusee", "ne_compile_pas") else rejouer_attaques(terrain, regle.reference, source)
     fuites = [a["attaque"] for a in attaques if a["issue"] in ("fuite", "divergence")]
     return {"regle": regle.id, "verdict": v.verdict, "detail": v.resume(), "attaques_fuite": fuites,
             "attaques": attaques, "source": source}

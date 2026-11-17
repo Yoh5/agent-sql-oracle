@@ -106,6 +106,23 @@ avant d'atteindre la base.
 | …la RH tout **sauf la direction générale** | **trop stricte** : le modèle a écrit `DEPARTMENT_ID <> 90`. En SQL, `NULL <> 90` n'est pas vrai : l'employée sans service disparaît pour la RH. C'est exactement le mutant « piège NULL » écrit à la main, et le juge l'a vu seul |
 | un manager ne voit que les commerciaux et commis de son service | **juste** |
 
+**Mesure complète via OpenRouter (17/11/2026, 4 règles, boucle de correction, 7 appels par
+modèle)** — premier essai → après correction :
+
+| règle | gpt-oss-120b | gpt-oss-20b |
+|---|---|---|
+| service | juste | juste |
+| sauf direction | **trop stricte** (piège NULL) → juste | **trop stricte** (piège NULL) → juste |
+| postes | ne compile pas → juste | **erreur** (toutes les requêtes échouent) → juste |
+| historique actuel | ne compile pas → juste | **erreur** → juste |
+
+**4 premiers essais sur 8 étaient faux ; les 8 politiques finales sont justes**, chaque fois
+après UN rapport du juge. Le piège NULL est **reproductible** : même modèle, deux hébergeurs
+(Groq, OpenRouter), deux tailles — même faute, vue chaque fois par la comparaison de lignes.
+Aucune politique n'a été posée sur HR. « Ne compile pas » (faute de syntaxe PL/SQL) est
+distinct de « refusée » (code dangereux bloqué par le contrôle statique) : les confondre
+ferait passer une faute de frappe pour une attaque arrêtée.
+
 **Deux trouvailles en construisant le juge :**
 - un prédicat sur `salary` posé aussi sur `JOB_HISTORY` (qui n'a pas de salaire) fait
   échouer toute requête sur l'historique — gardé comme mutant « erreur » ;

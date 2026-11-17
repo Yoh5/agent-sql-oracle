@@ -140,3 +140,10 @@ def test_le_rapport_montre_le_parcours_et_echappe_le_code():
                                        {"tour": 2, "verdict": "juste", "detail": "juste", "source": ""}]}])
     assert "Trop stricte" in page and "Juste" in page and "1 en moins" in page
     assert "&lt;b&gt;" in page and "<b>';" not in page        # le code est échappé
+
+
+
+def test_reel_une_faute_de_syntaxe_ne_compile_pas_et_n_est_pas_un_refus_de_securite(terrain):
+    from borne.preuve import juger
+    cassee = CATALOGUE[0].reference.replace("END IF;", "END IF", 1)
+    assert juger(terrain, CATALOGUE[0].reference, cassee).verdict == "ne_compile_pas"

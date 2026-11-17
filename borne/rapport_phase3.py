@@ -17,9 +17,10 @@ from typing import List
 from borne.regles import CATALOGUE
 
 COULEURS = {"juste": "ok", "trou": "ko", "trou_et_trop_stricte": "ko", "erreur": "ko",
-            "trop_stricte": "attente", "illisible": "neutre", "refusee": "neutre"}
+            "trop_stricte": "attente", "illisible": "neutre", "refusee": "neutre", "ne_compile_pas": "neutre"}
 MOTS = {"juste": "Juste", "trou": "Trou", "trou_et_trop_stricte": "Trou et trop stricte",
-        "erreur": "Erreur", "trop_stricte": "Trop stricte", "illisible": "Illisible", "refusee": "Refusée"}
+        "erreur": "Erreur", "trop_stricte": "Trop stricte", "illisible": "Illisible", "refusee": "Refusée",
+        "ne_compile_pas": "Ne compile pas"}
 
 STYLE = """
 :root{--bg:#f5f6f8;--carte:#fff;--ink:#0f172a;--ink-2:#475569;--filet:#d8dde4;

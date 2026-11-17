@@ -43,6 +43,11 @@ class ControleRefuse(ValueError):
     """La source n'est pas une fonction de politique acceptable."""
 
 
+class NeCompilePas(ControleRefuse):
+    """Acceptée par le contrôle, mais Oracle ne la compile pas. Ce n'est pas un refus de
+    SÉCURITÉ : les confondre ferait passer une faute de syntaxe pour du code dangereux bloqué."""
+
+
 def _sans_commentaires(source: str) -> str:
     source = re.sub(r"/\*.*?\*/", " ", source, flags=re.S)
     return re.sub(r"--[^\n]*", " ", source)
@@ -94,7 +99,7 @@ class TerrainEssai:
             erreurs = cur.execute(
                 "SELECT line, text FROM user_errors WHERE name = :n ORDER BY sequence", n=nom).fetchall()
             if erreurs:
-                raise ControleRefuse("ne compile pas : " + " ; ".join(f"l.{l} {t.strip()}" for l, t in erreurs[:3]))
+                raise NeCompilePas("ne compile pas : " + " ; ".join(f"l.{l} {t.strip()}" for l, t in erreurs[:3]))
         self.retirer()
         with self._connecter("SEC_ADMIN") as c:
             cur = c.cursor()
