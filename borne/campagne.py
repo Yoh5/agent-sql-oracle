@@ -135,7 +135,13 @@ def main(argv=None) -> int:
     p.add_argument("--sans-utilite", action="store_true")
     p.add_argument("--sans-attaques", action="store_true")
     p.add_argument("--sortie", default="journal/campagne")
+    p.add_argument("--adb", action="store_true",
+                   help="tout le banc sur Autonomous Database Free (comparaison Select AI, borne/select_ai.py)")
     a = p.parse_args(argv)
+    if a.adb:
+        from borne.select_ai import rediriger_vers_adb
+        rediriger_vers_adb()
+        a.sortie = a.sortie if a.sortie != "journal/campagne" else "journal/select_ai"
 
     mdp = os.environ.get("PERSONA_PASSWORD", "")
     v = VeriteOracle(os.environ["ORACLE_DSN"], mdp)
@@ -143,11 +149,14 @@ def main(argv=None) -> int:
     # pas) : on repart TOUJOURS d'une base protégée.
     v.vpd(True)
     ex = ExecuteurOracle(os.environ["ORACLE_DSN"], {c: mdp for c in ("MGR_50", "MGR_80", "RH_DIR", "HR_BAC")},
-                         lire_audit=v.derniere_entree_audit)
+                         lire_audit=None if a.adb else v.derniere_entree_audit)  # pas d'audit sur ADB
     if a.modele == "factice-parfait":
         modele_att, modele_util = modele_qui_cede(CATALOGUE), modele_parfait(QUESTIONS)
     elif a.modele == "factice-cede":
         modele_att = modele_util = modele_qui_cede(CATALOGUE)
+    elif a.modele.startswith("selectai:"):
+        from borne.select_ai import ModeleSelectAI
+        modele_att = modele_util = ModeleSelectAI(a.modele.split(":", 1)[1])
     else:
         modele_att = modele_util = modele_depuis(a.modele)
 

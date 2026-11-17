@@ -8,3 +8,4 @@ journal/
 
 # schémas d exemple d Oracle, téléchargés par scripts/installer.py
 .schemas/
+adb/
