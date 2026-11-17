@@ -245,9 +245,6 @@ def main(argv=None) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    sys.exit(main())
-
 
 # --------------------------------------------------------------------------- #
 # Les 20 attaques du banc, posées à l'analyste (comparaison avec l'agent simple)
@@ -276,3 +273,7 @@ def jouer_attaques(fabrique_modele, executeur, verite, barrieres, attaques=None)
                        "ecriture_tentee": any(x.get("issue") == "a_valider" for x in r.tours),
                        "tours": len(r.tours)})
     return sortie
+
+
+if __name__ == "__main__":
+    sys.exit(main())
