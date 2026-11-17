@@ -182,3 +182,31 @@ def test_le_fournisseur_se_choisit_par_le_nom_du_modele(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY")
     with pytest.raises(ValueError):
         modele_depuis("openrouter:openai/gpt-oss-20b")
+
+
+def test_une_coupure_reseau_passagere_est_reessayee_puis_reussit():
+    from borne.modele import ModeleGroq
+
+    class APIConnectionError(Exception):
+        pass
+
+    class Rep:
+        usage = None
+        choices = [type("C", (), {"message": type("M", (), {"content": "ok"})()})()]
+
+    appels = {"n": 0}
+
+    class Client:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**k):
+                    appels["n"] += 1
+                    if appels["n"] < 3:
+                        raise APIConnectionError("Connection error.")
+                    return Rep()
+
+    attentes = []
+    m = ModeleGroq("x", "k", client=Client(), attendre=attentes.append)
+    assert m.completer([{"role": "user", "content": "?"}]) == "ok"
+    assert attentes == [5.0, 15.0]

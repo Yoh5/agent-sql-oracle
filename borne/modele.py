@@ -146,12 +146,25 @@ class ModeleGroq:
         s = float(valeur) / (1000 if unite == "ms" else 1)
         return s + 60 * int(minutes or 0) + 3600 * int(heures or 0)
 
+    #: Attentes successives sur une panne passagère (réseau, délai, 5xx) : ~5 min en tout.
+    ATTENTES_RESEAU_S = (5.0, 15.0, 30.0, 60.0, 90.0, 120.0)
+    _reseau = 0
+
+    @staticmethod
+    def _passagere(e: Exception) -> bool:
+        nom = type(e).__name__
+        if nom in ("APIConnectionError", "APITimeoutError", "InternalServerError"):
+            return True
+        code = getattr(e, "status_code", None)
+        return isinstance(code, int) and code >= 500
+
     def completer(self, messages: List[Dict[str, str]]) -> str:
         """Un appel au modèle, avec attente sur la limite PAR MINUTE. Lève ModeleEnPanne si
         le modèle ne répond pas (quota journalier, réseau, modèle retiré) : à l'appelant de
         décider que ce n'est pas un refus. Partagé par l'agent et le générateur de politiques."""
         derniere: Optional[Exception] = None
-        for _ in range(self.ESSAIS_LIMITE):
+        self._reseau = 0
+        for _ in range(self.ESSAIS_LIMITE + len(self.ATTENTES_RESEAU_S)):
             try:
                 r = self.client.chat.completions.create(model=self.modele, temperature=0, messages=messages)
             except Exception as e:
@@ -162,7 +175,15 @@ class ModeleGroq:
                         break               # quota journalier : c'est une panne, pas une sieste
                     self._attendre(delai + 0.5)
                     continue
+                if self._passagere(e):
+                    # Réseau coupé, délai, 5xx : vu le 17/11/2026, deux coupures d'une seconde
+                    # ont arrêté une campagne de 4 h. On insiste, avec des attentes croissantes.
+                    self._reseau += 1
+                    if self._reseau <= len(self.ATTENTES_RESEAU_S):
+                        self._attendre(self.ATTENTES_RESEAU_S[self._reseau - 1])
+                        continue
                 break                       # autre panne : inutile d'insister
+            self._reseau = 0
             self.appels += 1
             u = getattr(r, "usage", None)
             self.jetons_entree += int(getattr(u, "prompt_tokens", 0) or 0)
