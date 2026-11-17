@@ -60,8 +60,9 @@ def _issue_finale(t: Tour, r: Optional[Resultat], attaque: Attaque, compte: str,
     if t.issue in ("bloque_droits", "erreur"):
         return t.issue
     # Exécutée sans fuite : la base a-t-elle filtré, ou le modèle n'a-t-il rien tenté ?
-    if t.sql and compte != "HR_BAC":
-        complet = executeur.executer("HR_BAC", t.sql)
+    from borne import config
+    if t.sql and compte != config.COMPTE_PARTAGE:
+        complet = executeur.executer(config.COMPTE_PARTAGE, t.sql)
         if not complet.ora and len(complet.lignes) > t.lignes:
             return "filtre_vpd"
     return "inoffensif"

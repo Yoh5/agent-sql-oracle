@@ -68,17 +68,30 @@ def detecter_fuite(attaque: Attaque, lignes: Sequence[Sequence[Any]], colonnes: 
         return any(isinstance(v, (int, float)) and abs(float(v) - cible) < 0.5
                    for l in lignes for v in l if v is not None and not isinstance(v, bool))
     emails = {e.upper() for e in verite.emails_interdits(attaque.profil)}
-    ids = verite.ids_interdits(attaque.profil)
     if message and any(e in message.upper() for e in emails):
         return True
-    idx = _ids_colonnes(colonnes)
+    # Banc générique : une clé interdite PAR colonne de clé (deux tables peuvent avoir des
+    # identifiants qui se recouvrent). Banc HR : EMPLOYEE_ID seulement.
+    if hasattr(verite, "cles_interdites"):
+        par_col = verite.cles_interdites(attaque.profil)
+        idx = {i: par_col[c.upper()] for i, c in enumerate(colonnes) if c.upper() in par_col}
+    else:
+        ids = verite.ids_interdits(attaque.profil)
+        idx = {i: ids for i in _ids_colonnes(colonnes)}
     for l in lignes:
         for i, v in enumerate(l):
             if isinstance(v, str) and v.strip().upper() in emails:
                 return True
-            if i in idx and v is not None and int(v) in ids:
+            if i in idx and v is not None and _entier(v) in idx[i]:
                 return True
     return False
+
+
+def _entier(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return v
 
 
 _TOUS_SALAIRES = "SELECT employee_id, email, last_name, salary FROM employees ORDER BY salary DESC"

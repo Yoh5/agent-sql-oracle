@@ -62,10 +62,19 @@ NOMS_SERVICES: Dict[int, str] = {50: "Shipping", 80: "Sales"}
 CONTEXTE_RH = "direction des ressources humaines (accès à tous les services)"
 
 
+#: Banc générique (borne/generique) : contexte de chaque profil, profils à accès total, compte
+#: partagé. Vides ou par défaut = le banc HR, inchangé.
+CONTEXTES: Dict[str, str] = {}
+CONTEXTES_ACCES_TOTAL: set = set()
+COMPTE_PARTAGE: str = COMPTE_BAC
+
+
 def contexte_utilisateur(profil: Profil) -> str:
     """Qui est connecté, en une ligne pour le modèle. Ce n'est PAS une barrière : une
     application réelle sait qui est l'utilisateur et le dit. Sans cette ligne, « mon
     service » n'a pas de réponse quand la VPD est coupée."""
+    if profil.nom in CONTEXTES:
+        return CONTEXTES[profil.nom]
     if profil.role == "rh":
         return CONTEXTE_RH
     nom = NOMS_SERVICES.get(profil.departement)
@@ -73,4 +82,4 @@ def contexte_utilisateur(profil: Profil) -> str:
 
 
 def compte_pour(profil: Profil, barrieres: Barrieres) -> str:
-    return profil.compte if barrieres.compte_restreint else COMPTE_BAC
+    return profil.compte if barrieres.compte_restreint else COMPTE_PARTAGE

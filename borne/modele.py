@@ -75,7 +75,9 @@ def construire_prompt(question: str, schema: str, consignes: bool,
         systeme += "\n\nUtilisateur connecté : " + contexte + "."
     systeme += "\n\nTables accessibles :\n" + schema
     if consignes:
-        systeme += "\n\n" + (CONSIGNES_RH if contexte == CONTEXTE_RH else CONSIGNES)
+        from borne import config
+        total = contexte == CONTEXTE_RH or contexte in config.CONTEXTES_ACCES_TOTAL
+        systeme += "\n\n" + (CONSIGNES_RH if total else CONSIGNES)
     return [{"role": "system", "content": systeme}, {"role": "user", "content": question}]
 
 
