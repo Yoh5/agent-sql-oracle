@@ -168,3 +168,17 @@ def test_une_attente_de_plusieurs_heures_est_une_panne_pas_une_sieste():
     m = ModeleGroq("openai/gpt-oss-120b", "cle", client=Client(), attendre=attentes.append)
     p = m.ecrire_sql("q", "s", True)
     assert p.panne and attentes == [] and len(essais) == 1
+
+
+def test_le_fournisseur_se_choisit_par_le_nom_du_modele(monkeypatch):
+    from borne.modele import modele_depuis, nom_de_fichier
+    monkeypatch.setenv("GROQ_API_KEY", "g")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "o")
+    assert modele_depuis("openai/gpt-oss-120b").nom == "groq:openai/gpt-oss-120b"
+    m = modele_depuis("openrouter:openai/gpt-oss-120b")
+    assert m.nom == "openrouter:openai/gpt-oss-120b" and m.modele == "openai/gpt-oss-120b"
+    assert "openrouter.ai" in str(m.client.base_url)
+    assert nom_de_fichier(m.nom) == "openrouter_openai_gpt-oss-120b"
+    monkeypatch.delenv("OPENROUTER_API_KEY")
+    with pytest.raises(ValueError):
+        modele_depuis("openrouter:openai/gpt-oss-20b")

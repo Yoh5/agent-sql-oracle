@@ -55,7 +55,7 @@ def rapport(modele: str, resultats: List[dict]) -> str:
 
 def main(argv=None) -> int:
     from dotenv import load_dotenv
-    from borne.modele import ModeleEnPanne, ModeleGroq
+    from borne.modele import ModeleEnPanne, modele_depuis, nom_de_fichier
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     p = argparse.ArgumentParser(prog="python -m borne.phase3")
     p.add_argument("--modele", default=os.environ.get("MODELE", "openai/gpt-oss-120b"))
@@ -66,12 +66,12 @@ def main(argv=None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     terrain = TerrainEssai(os.environ["ORACLE_DSN"], os.environ.get("PERSONA_PASSWORD", ""))
-    modele = ModeleGroq(a.modele, os.environ["GROQ_API_KEY"])
+    modele = modele_depuis(a.modele)
     gen = GenerateurPolitique(modele)
     colonnes = colonnes_protegees(terrain)
     sortie = Path("journal/phase3")
     sortie.mkdir(parents=True, exist_ok=True)
-    nom = a.modele.replace("/", "_")
+    nom = nom_de_fichier(a.modele)
     resultats = []
     for regle in [r for r in CATALOGUE if not a.regle or r.id in a.regle]:
         try:

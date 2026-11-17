@@ -121,13 +121,13 @@ class ModeleGroq:
     ATTENTE_MAX_S = 120.0
 
     def __init__(self, modele: str, cle: str, delai_s: float = 30.0, client: Any = None,
-                 attendre: Optional[Callable[[float], None]] = None):
-        self.nom = f"groq:{modele}"
+                 attendre: Optional[Callable[[float], None]] = None,
+                 base_url: str = "https://api.groq.com/openai/v1", fournisseur: str = "groq"):
+        self.nom = f"{fournisseur}:{modele}"
         self.modele = modele
         if client is None:
             from openai import OpenAI
-            client = OpenAI(api_key=cle, base_url="https://api.groq.com/openai/v1",
-                            timeout=delai_s, max_retries=2)
+            client = OpenAI(api_key=cle, base_url=base_url, timeout=delai_s, max_retries=2)
         self.client = client
         self._attendre = attendre or time.sleep
         #: Ce que la campagne a réellement consommé (le raisonnement de gpt-oss est
@@ -177,3 +177,28 @@ class ModeleGroq:
         except ModeleEnPanne as e:
             # Quota qui ne passe pas, réseau, délai : un tour qui échoue, pas un plantage.
             return Proposition(None, str(e), "", panne=True)
+
+
+#: Fournisseurs compatibles avec l'API d'OpenAI : même client, autre adresse, autre clé.
+FOURNISSEURS = {
+    "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
+    "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+}
+
+
+def modele_depuis(nom: str) -> ModeleGroq:
+    """« openai/gpt-oss-120b » (Groq par défaut) ou « openrouter:openai/gpt-oss-120b »."""
+    import os
+    fournisseur, _, modele = nom.partition(":") if ":" in nom else ("groq", "", nom)
+    if fournisseur not in FOURNISSEURS:
+        raise ValueError(f"fournisseur inconnu : {fournisseur} (connus : {', '.join(FOURNISSEURS)})")
+    base_url, variable = FOURNISSEURS[fournisseur]
+    cle = os.environ.get(variable, "")
+    if not cle:
+        raise ValueError(f"{variable} absente du .env")
+    return ModeleGroq(modele, cle, base_url=base_url, fournisseur=fournisseur)
+
+
+def nom_de_fichier(nom: str) -> str:
+    """Un nom de modèle utilisable comme nom de fichier sous Windows (« : » et « / » interdits)."""
+    return nom.replace("/", "_").replace(":", "_")

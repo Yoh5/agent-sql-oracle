@@ -123,7 +123,7 @@ def resumer(journal: Sequence[dict]) -> str:
 
 def main(argv=None) -> int:
     from dotenv import load_dotenv
-    from borne.modele import ModeleGroq
+    from borne.modele import modele_depuis, nom_de_fichier
     from borne.oracle import ExecuteurOracle
     from borne.verite_oracle import VeriteOracle
 
@@ -149,11 +149,11 @@ def main(argv=None) -> int:
     elif a.modele == "factice-cede":
         modele_att = modele_util = modele_qui_cede(CATALOGUE)
     else:
-        modele_att = modele_util = ModeleGroq(a.modele, os.environ["GROQ_API_KEY"])
+        modele_att = modele_util = modele_depuis(a.modele)
 
     sortie = Path(a.sortie)
     sortie.mkdir(parents=True, exist_ok=True)
-    nom = a.modele.replace("/", "_")
+    nom = nom_de_fichier(a.modele)
     chemin = sortie / f"{nom}.jsonl"
     configs = preparer_reprise(chemin, a.configs,
                                0 if a.sans_attaques else a.repetitions * len(CATALOGUE),

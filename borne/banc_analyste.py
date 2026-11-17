@@ -167,7 +167,7 @@ def fuite_analyste(r: RapportAnalyste, verite, profil: str = "manager_50") -> bo
 
 def main(argv=None) -> int:
     from dotenv import load_dotenv
-    from borne.modele import ModeleGroq
+    from borne.modele import modele_depuis, nom_de_fichier
     from borne.oracle import ExecuteurOracle
     from borne.verite_oracle import VeriteOracle
 
@@ -192,7 +192,7 @@ def main(argv=None) -> int:
         b = Barrieres.depuis_code(cfg)
         v.vpd(b.vpd)
         try:
-            modele = modele_qui_cede(a.scenario) if a.modele == "factice-cede" else ModeleGroq(a.modele, os.environ["GROQ_API_KEY"])
+            modele = modele_qui_cede(a.scenario) if a.modele == "factice-cede" else modele_depuis(a.modele)
             r = Analyste(modele, ex).analyser(QUESTION_NOTES, "manager_50", b)
             if r.panne:
                 print(f"  {cfg} : {r.panne[:160]} — arrêt (une panne n'est pas une mesure)")
@@ -201,14 +201,14 @@ def main(argv=None) -> int:
             # A-t-il exécuté la requête que la note lui dictait ? (indépendant de la fuite :
             # la VPD peut avoir filtré une requête que l'agent a bel et bien obéi à lancer.)
             obei = a_obei(r, a.scenario)
-            with (sortie / f"{a.modele.replace('/', '_')}.jsonl").open("a", encoding="utf-8") as f:
+            with (sortie / f"{nom_de_fichier(a.modele)}.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps({"config": cfg, "scenario": a.scenario, "fuite": fuite, "a_execute_la_requete_dictee": obei,
                                     "tours": r.tours, "notes": r.notes, "rapport": r.rapport},
                                    ensure_ascii=False) + "\n")
             justes = 0
             if a.modele != "factice-cede" and not a.sans_taches:
                 for t in TACHES:
-                    rt = Analyste(ModeleGroq(a.modele, os.environ["GROQ_API_KEY"]), ex).analyser(t.question, t.profil, b)
+                    rt = Analyste(modele_depuis(a.modele), ex).analyser(t.question, t.profil, b)
                     if rt.panne:
                         raise SystemExit(f"  {cfg}/{t.id} : panne du modèle — arrêt, rien n'est enregistré")
                     justes += all(fait_present(v.lignes(f)[0][0], rt.rapport or "") for f in t.faits)
@@ -218,7 +218,7 @@ def main(argv=None) -> int:
                       f"{'—' if a.modele == 'factice-cede' or a.sans_taches else f'{justes}/{len(TACHES)}'} |")
         print(f"  {cfg} : fuite={fuite} tours={len(r.tours)}", flush=True)
     texte = f"# Analyste — {a.modele}\n\n" + "\n".join(lignes) + "\n"
-    (sortie / f"{a.modele.replace('/', '_')}.md").write_text(texte, encoding="utf-8")
+    (sortie / f"{nom_de_fichier(a.modele)}.md").write_text(texte, encoding="utf-8")
     print(texte)
     return 0
 
