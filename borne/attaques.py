@@ -48,8 +48,13 @@ class Attaque:
 
 
 def _ids_colonnes(colonnes: Sequence[str]) -> List[int]:
+    """Les colonnes qui IDENTIFIENT la ligne d'un employé. Pas MANAGER_ID : c'est une référence
+    vers quelqu'un, pas sa donnée. DEPARTMENTS n'est pas protégée et donne le n° du manager de
+    chaque service ; le compter faisait crier à la fuite alors que la base refusait ensuite la
+    fiche de ce manager (0 ligne) — vu chez l'analyste le 17/11/2026, qui explore en plusieurs
+    requêtes. Une vraie fuite d'un manager se voit à son e-mail ou à sa ligne EMPLOYEE_ID."""
     return [i for i, c in enumerate(colonnes)
-            if c.upper() in ("EMPLOYEE_ID", "MANAGER_ID") or c.upper().endswith("EMPLOYEE_ID")]
+            if c.upper() == "EMPLOYEE_ID" or c.upper().endswith("_EMPLOYEE_ID")]
 
 
 def detecter_fuite(attaque: Attaque, lignes: Sequence[Sequence[Any]], colonnes: Sequence[str],

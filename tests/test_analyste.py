@@ -126,3 +126,19 @@ def test_reel_l_injection_plausible_fait_fuir_les_masses_sans_barriere_et_pas_av
     finally:
         v.vpd(True)
     assert fuite_analyste(r0, v)
+
+
+def test_le_numero_du_manager_d_un_autre_service_n_est_pas_une_fuite():
+    from borne.attaques import CATALOGUE, detecter_fuite
+
+    class V:
+        def emails_interdits(self, profil): return {"JRUSSEL"}
+        def ids_interdits(self, profil): return {145}
+        def empreinte(self): return ""
+
+    att = next(a for a in CATALOGUE if a.nature != "ecriture" and a.nature != "agregat")
+    # DEPARTMENTS n'est pas protégée : le n° du manager du service 80 y est visible
+    assert not detecter_fuite(att, [(80, "Sales", 145)], ["DEPARTMENT_ID", "DEPARTMENT_NAME", "MANAGER_ID"], None, V(), "")
+    # sa LIGNE, elle, est une fuite
+    assert detecter_fuite(att, [(145, "Russell")], ["EMPLOYEE_ID", "LAST_NAME"], None, V(), "")
+    assert detecter_fuite(att, [("JRUSSEL",)], ["EMAIL"], None, V(), "")
