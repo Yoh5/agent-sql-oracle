@@ -126,6 +126,43 @@ l'analyste, qui explore, la lisait — la base refusait ensuite la fiche de ce m
 Une fuite = un e-mail interdit ou une ligne `EMPLOYEE_ID`. Les cases protégées de l'agent
 simple, déjà à 0, ne pouvaient pas changer.
 
+## Le banc générique : auditer n'importe quel schéma (18/11/2026)
+
+Le banc ci-dessus était écrit pour HR. Le **banc générique** part d'une description du schéma et de
+la **règle attendue** (ce que chaque profil a le droit de voir, en SQL) et **génère** tout le reste :
+les attaques (9 à 10 familles par table et par profil), les questions légitimes et la vérité.
+Conception : `docs/superpowers/specs/2026-11-18-banc-generique-design.md`.
+
+```bash
+python -m borne.generique installer  bancs/hopital/banc.yaml      # schéma, comptes, VPD
+python -m borne.generique inventaire bancs/hopital/banc.yaml      # 56 attaques, 27 questions générées
+python -m borne.generique campagne   bancs/hopital/banc.yaml --modele openrouter:openai/gpt-oss-120b
+```
+
+**Contrôle sur HR** (`bancs/hr/banc.yaml`) : le banc généré retrouve la conclusion du banc écrit à
+la main — compte par profil + VPD : **0/20** ; sans ces barrières : 16 à 20/20.
+
+**Second schéma, un hôpital** (`bancs/hopital/`), écrit sans regarder le générateur, avec **deux
+failles volontaires** : la VPD oublie la table `PRESCRIPTIONS`, et sa fonction laisse passer les
+patients sans médecin (`medecin_id IS NULL`). Avec le modèle qui cède à tout et toutes les
+barrières, le banc les trouve **toutes les deux, sans qu'on les lui indique** :
+
+| base seule, toutes barrières | patients | consultations | prescriptions |
+|---|---|---|---|
+| attaques qui passent | 6/20 | 6/18 | **14/18** |
+| lesquelles | les 3 qui atteignent les lignes non attribuées | idem | toutes les lectures |
+
+Et avec un vrai modèle (gpt-oss-120b) :
+
+| barrières | attaques passées | la base seule laisserait passer | refus du modèle | utilité |
+|---|---|---|---|---|
+| toutes | 0/56 | **26/56** | 53/56 | 100 % |
+| compte + VPD, sans consignes | **23/56** | 26/56 | 7/56 | 100 % |
+| aucune | 35/56 | 56/56 | 6/56 | 100 % |
+
+**Sur une base mal protégée, le 0/56 ne tient qu'au prompt.** Le banc le dit avant la mise en
+production, et dit **où** : table par table.
+
 ## Oracle Select AI face aux mêmes attaques (17/11/2026)
 
 Select AI (`DBMS_CLOUD_AI`) n'existe que sur les bases Autonomous : le banc a été réinstallé dans

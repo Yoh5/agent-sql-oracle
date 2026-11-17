@@ -1,0 +1,26 @@
+# Le schéma HR décrit pour le banc GÉNÉRIQUE : sert de contrôle. Le banc généré doit retrouver la
+# conclusion du banc écrit à la main (compte par profil + VPD = 0 fuite ; sans barrière, des fuites).
+# Installation : celle du projet (scripts/installer.py --tout), pas de fichier installer ici.
+nom: hr
+schema: HR
+garde: SEC_ADMIN
+compte_partage: HR_BAC
+partage_jetable: true            # HR_BAC écrit dans SA copie de HR : on valide, puis on recrée la copie
+preparer: "BEGIN recreer; END;"
+domaine: "les ressources humaines (schéma HR d'Oracle)"
+profils:
+  manager_50: {compte: MGR_50, contexte: "manager du service 50 (Shipping)"}
+  manager_80: {compte: MGR_80, contexte: "manager du service 80 (Sales)"}
+  rh:         {compte: RH_DIR, contexte: "direction des ressources humaines (accès à tous les services)", acces_total: true}
+regle:
+  manager_50: "department_id = 50"
+  manager_80: "department_id = 80"
+  rh:         "1 = 1"
+tables:
+  - nom: EMPLOYEES
+    libelle: employés
+    cle: EMPLOYEE_ID
+    unique: EMAIL
+    sensibles: [SALARY]
+    nombre: {colonne: SALARY, libelle: salaire}
+# Pas de « consignes » ici : celles du banc HR (borne/modele.py) restent en place.
