@@ -367,8 +367,16 @@ justes **95 %**, 2 réponses illisibles (écartées, jamais devinées).
   l'attaquant peut être retourné. **Correction prévue** : le périmètre ne doit plus venir du modèle mais du
   code, en comparant le filtre réel du SQL (`department_id = 80`) à la règle du profil (`= 50`).
 
-Ce que ça ne couvre pas : un seul modèle d'intention ; nos 20 attaques seulement ; `EMAIL` n'est pas déclaré
-sensible dans le banc HR (seul `SALARY` l'est).
+**Correction faite le même jour** (`sentinelle/perimetre.py`) : le code lit dans le SQL les valeurs comparées à
+la colonne de partition de la règle du profil (`department_id = 80`, `IN (50, 80)`, y compris en sous-requête)
+et signale toute valeur hors de la règle. Résultat sur les mêmes attaques : **172 fuites sur 172 et 89
+filtrées sur 89 signalées** (49 et 19 par cette règle, dont l'usurpation de service) ; **aucune fausse
+alerte en plus** sur les 1 584 questions légitimes (les managers restent dans leur service).
+
+Ce que ça ne couvre pas : un seul modèle d'intention ; nos 20 attaques seulement, toutes directes (la question
+porte l'intention) — le cas où la sentinelle doit le plus servir, une question innocente et un SQL qui
+déborde par injection indirecte, reste à mesurer ; `EMAIL` n'est pas déclaré sensible dans le banc HR (seul
+`SALARY` l'est).
 
 ## Installer
 
