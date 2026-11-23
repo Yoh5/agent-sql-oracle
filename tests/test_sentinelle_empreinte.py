@@ -32,3 +32,43 @@ def test_groupe():
 def test_illisible_ne_leve_pas():
     assert empreinte("BEGIN EXECUTE IMMEDIATE 'x'; END;", S).valide is False
     assert empreinte("SELECT 1 FROM dual; DROP TABLE t", S).valide is False
+
+
+# --- relecture finale : défauts trouvés, reproduits avant correction ---
+from sentinelle.comparateur import comparer  # noqa: E402
+
+M = {"EMPLOYEES": ["SALARY"]}
+
+
+def test_union_lit_toutes_les_branches():
+    v = comparer(empreinte("SELECT COUNT(*) FROM hr.employees WHERE department_id=50", S),
+                 empreinte("SELECT COUNT(*) FROM hr.employees WHERE department_id=50 UNION ALL "
+                           "SELECT salary FROM hr.employees WHERE department_id=50", S))
+    assert "colonne sensible SALARY non demandée" in v.raisons and v.score >= 8
+
+
+def test_sous_requete_scalaire_dans_le_select_sort_sa_colonne():
+    e = empreinte("SELECT last_name, (SELECT salary FROM hr.employees x WHERE x.employee_id = e.employee_id) "
+                  "FROM hr.employees e WHERE department_id = 50", S)
+    assert e.sensibles == {"SALARY"}
+
+
+def test_table_derivee_renommee_remonte_a_la_source():
+    e = empreinte("SELECT last_name, s FROM (SELECT last_name, salary AS s FROM hr.employees) d", S)
+    assert e.sensibles == {"SALARY"}
+
+
+def test_cte_renommee_et_nom_de_cte_pas_une_table():
+    e = empreinte("WITH x AS (SELECT salary AS s FROM hr.employees) SELECT s FROM x", S)
+    assert e.sensibles == {"SALARY"} and e.tables == {"EMPLOYEES"}
+
+
+def test_etoile_n_expose_que_les_sensibles_des_tables_presentes():
+    assert empreinte("SELECT * FROM hr.regions", M).sensibles == set()
+    assert empreinte("SELECT * FROM hr.employees", M).sensibles == {"SALARY"}
+
+
+def test_agregat_enveloppe_reste_un_agregat():
+    assert empreinte("SELECT ROUND(AVG(salary), 2) FROM hr.employees", S).forme == "moyenne"
+    assert empreinte("SELECT NVL(SUM(salary), 0) FROM hr.employees", S).forme == "somme"
+    assert empreinte("SELECT MAX(salary) - MIN(salary) FROM hr.employees", S).forme != "liste"

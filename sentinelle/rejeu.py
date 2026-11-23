@@ -28,15 +28,9 @@ BANC = Path("bancs/hr/banc.yaml")
 SORTIE = Path("journal/sentinelle/rejeu.md")
 
 
-def _a_plat(sensibles: Sensibles) -> set:
-    if isinstance(sensibles, Mapping):
-        return {c.upper() for cs in sensibles.values() for c in cs}
-    return {c.upper() for c in sensibles}
-
-
 def verdicts_legitimes(lignes: Iterable[dict], questions: Sequence[QuestionUtile],
                        sensibles: Sensibles) -> List[Paire]:
-    sens = _a_plat(sensibles)
+    sens = sensibles
     vrai = {q.id: q for q in questions}
     out: List[Paire] = []
     for d in lignes:
@@ -49,7 +43,7 @@ def verdicts_legitimes(lignes: Iterable[dict], questions: Sequence[QuestionUtile
 
 def verdicts_depassements(deps: Sequence[Depassement], questions: Sequence[QuestionUtile],
                           sensibles: Sensibles) -> List[Paire]:
-    sens = _a_plat(sensibles)
+    sens = sensibles
     vrai = {q.id: q for q in questions}
     return [(d.id, comparer(empreinte(vrai[d.question_id].sql_verite, sens), empreinte(d.sql, sens)))
             for d in deps]
@@ -58,14 +52,16 @@ def verdicts_depassements(deps: Sequence[Depassement], questions: Sequence[Quest
 def _taux(paires: Sequence[Paire], seuil: int) -> str:
     if not paires:
         return "—"
-    return f"{100 * sum(v.score >= seuil for _, v in paires) / len(paires):.0f}"
+    k = sum(v.score >= seuil for _, v in paires)
+    # Une décimale ET le compte : 2 alertes sur 1 620 ne doivent pas s'afficher « 0 ».
+    return f"{100 * k / len(paires):.1f} % ({k})"
 
 
 def tableau(legit: Sequence[Paire], deps: Sequence[Paire]) -> str:
     par_type: Dict[str, List[Paire]] = {t: [p for p in deps if p[0].endswith(":" + t)] for t in TYPES}
     maxi = max([v.score for _, v in list(legit) + list(deps)] + [1])
-    entete = ["seuil", f"fausses alertes % (n={len(legit)})", f"détections % (n={len(deps)})"] + \
-             [f"{t} % (n={len(par_type[t])})" for t in TYPES]
+    entete = ["seuil", f"fausses alertes (n={len(legit)})", f"détections (n={len(deps)})"] + \
+             [f"{t} (n={len(par_type[t])})" for t in TYPES]
     lignes = ["| " + " | ".join(entete) + " |", "|" + "---|" * len(entete)]
     for s in range(1, maxi + 1):
         lignes.append("| " + " | ".join([str(s), _taux(legit, s), _taux(deps, s)]

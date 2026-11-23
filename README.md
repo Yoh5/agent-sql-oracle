@@ -307,17 +307,24 @@ Phase 1, hors ligne, aucun appel de modèle (`python -m sentinelle.rejeu journal
 
 | seuil | fausses alertes (1 620 requêtes légitimes écrites par l'agent) | dépassements détectés (136) |
 |---|---|---|
-| 1 | 3 % | 100 % |
-| **2** | **0 %** | **100 %** |
-| 4 | 0 % | 96 % |
-| 5 | 0 % | 80 % |
+| 1 | 3,0 % (49) | 100 % |
+| 2 | 0,1 % (2) | 100 % |
+| **4** | **0 % (0)** | **93,4 % (127)** |
+| 5 | 0 % (0) | 77,2 % (105) |
 
 - **Le chiffre qui compte est la colonne de gauche** : sur du SQL réellement écrit par gpt-oss-120b et
-  20b pour des questions légitimes, aucune alerte à partir du seuil 2. Les seules raisons au seuil 1 sont
-  des colonnes non sensibles en plus (`JOB_TITLE`, `DEPARTMENT_ID`, `EMPLOYEE_ID`).
+  20b pour des questions légitimes, **2 alertes sur 1 620 au seuil 2** (la même question, où l'agent a
+  ajouté une jointure sur `DEPARTMENTS` et l'identifiant d'employé), **aucune à partir du seuil 4**. Au
+  seuil 1, les raisons sont des colonnes non sensibles en plus (`JOB_TITLE`, `DEPARTMENT_ID`,
+  `EMPLOYEE_ID`, `COMMISSION_PCT`) et cette jointure.
 - **La colonne de droite est en partie circulaire** : les dépassements sont fabriqués par trois mutations
   (retirer l'agrégat, ajouter le salaire, `SELECT *`) que le comparateur sait reconnaître. Elle prouve que
-  le comparateur fait ce qu'il dit, pas qu'il attrape un attaquant réel.
+  le comparateur fait ce qu'il dit, pas qu'il attrape un attaquant réel. Au seuil 4, il laisse passer les
+  `SELECT *` sur des tables sans colonne sensible (score 3) : c'est voulu.
+- **Ce que la relecture a fait corriger avant ce tableau** : un `UNION` cachait sa branche de droite, une
+  sous-requête scalaire ou une table dérivée renommée (`salary AS s`) faisait sortir le salaire sans
+  qu'on le voie, `SELECT *` prêtait le salaire à des tables qui ne l'ont pas, `ROUND(AVG(...))` passait
+  pour une liste, et un arrondi affichait « 0 % » pour 2 alertes. Chaque cas a son test.
 
 Ce que la phase 1 ne couvre pas : l'intention vient de la requête de vérité, pas d'un modèle (phase 2) ;
 aucune attaque n'est encore passée (ni nos 20, ni SecureSQL, ni un attaquant adaptatif) ; un seul schéma
