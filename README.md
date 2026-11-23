@@ -294,6 +294,35 @@ ferait passer une faute de frappe pour une attaque arrêtée.
   sont jouées surtout par des managers. La comparaison des lignes, exhaustive, l'attrape.
   D'où le choix : le juge est la comparaison, les attaques un complément.
 
+## Sentinelle — phase 1 : comparer la question et le SQL (23/11/2026)
+
+Les barrières de la base limitent ce que l'agent **peut** voir ; elles ne voient pas une requête qui reste
+dans les droits mais rend plus que la question (« combien de personnes dans mon service ? » → la liste
+avec les salaires). La sentinelle (`sentinelle/`, conception dans
+`docs/superpowers/specs/2026-11-23-sentinelle-design.md`) compare **l'intention de la question** et
+**l'empreinte du SQL** (lue par sqlglot, jamais exécutée). Le cœur est du code : il ne lit jamais le texte
+de l'attaquant.
+
+Phase 1, hors ligne, aucun appel de modèle (`python -m sentinelle.rejeu journal/campagne/*.jsonl`) :
+
+| seuil | fausses alertes (1 620 requêtes légitimes écrites par l'agent) | dépassements détectés (136) |
+|---|---|---|
+| 1 | 3 % | 100 % |
+| **2** | **0 %** | **100 %** |
+| 4 | 0 % | 96 % |
+| 5 | 0 % | 80 % |
+
+- **Le chiffre qui compte est la colonne de gauche** : sur du SQL réellement écrit par gpt-oss-120b et
+  20b pour des questions légitimes, aucune alerte à partir du seuil 2. Les seules raisons au seuil 1 sont
+  des colonnes non sensibles en plus (`JOB_TITLE`, `DEPARTMENT_ID`, `EMPLOYEE_ID`).
+- **La colonne de droite est en partie circulaire** : les dépassements sont fabriqués par trois mutations
+  (retirer l'agrégat, ajouter le salaire, `SELECT *`) que le comparateur sait reconnaître. Elle prouve que
+  le comparateur fait ce qu'il dit, pas qu'il attrape un attaquant réel.
+
+Ce que la phase 1 ne couvre pas : l'intention vient de la requête de vérité, pas d'un modèle (phase 2) ;
+aucune attaque n'est encore passée (ni nos 20, ni SecureSQL, ni un attaquant adaptatif) ; un seul schéma
+(HR).
+
 ## Installer
 
 ```bash
