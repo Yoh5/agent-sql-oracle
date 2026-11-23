@@ -378,6 +378,29 @@ porte l'intention) — le cas où la sentinelle doit le plus servir, une questio
 déborde par injection indirecte, reste à mesurer ; `EMAIL` n'est pas déclaré sensible dans le banc HR (seul
 `SALARY` l'est).
 
+## Sentinelle — phase 3 : répondre plutôt que bloquer (23/11/2026)
+
+Quand le SQL rend plus que la question, la sentinelle garde ce que l'agent a écrit pour **choisir les lignes**
+(FROM, jointures, WHERE : ses droits) et ne remplace que **ce qui sort** par ce que l'intention demande
+(`COUNT(*)`, `AVG(salary)`, ou les seules colonnes demandées) — `sentinelle/reecriture.py`. La réécriture
+n'est retenue que si le comparateur lui donne 0. L'action vient d'une liste fermée, choisie par du code
+(`sentinelle/decision.py`) : **laisser**, **réécrire**, **enquêter**, **couper** (filtre hors de la règle du
+profil, lu dans le SQL). Mesure : `python -m sentinelle.actions [--intention openai/gpt-oss-20b] journal/campagne/*.jsonl`.
+
+| seuil 4 | légitimes | dépassements | réécritures exactes |
+|---|---|---|---|
+| intention = vérité | 100 % laissées (1 620) | 93,4 % réécrites | 121 / 127 |
+| intention du modèle | 95,5 % laissées, **4,5 % envoyées à l'enquête** | 91,9 % réécrites | 119 / 125 |
+
+- Les 72 fausses alertes de la phase 2 ne **bloquent** plus personne : elles partent à l'enquête.
+- Une « réécriture exacte » rend la même forme et les mêmes colonnes que la requête de vérité ; c'est jugé
+  sur l'empreinte, pas encore en exécutant sur Oracle.
+- **Défaut trouvé par la mesure et corrigé** : la première version réécrivait **71 % des fuites** — une
+  question qui réclame elle-même « tous les salaires » recevait une réponse propre, ce qui sert l'attaquant.
+  Désormais une demande hors périmètre n'est **jamais** réécrite : coupée si la règle en code la voit,
+  envoyée à l'enquête si c'est le modèle qui la signale. Résultat sur les attaques avec SQL : **0 réécrite** ;
+  fuites (172) : 49 coupées, 123 à l'enquête.
+
 ## Installer
 
 ```bash
