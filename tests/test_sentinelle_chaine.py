@@ -30,3 +30,22 @@ def test_question_hors_perimetre_jamais_reecrite():
     v, d = traiter("SELECT last_name, salary, email FROM employees", intention, S,
                    regle="department_id = 50", seuil=4, perimetre="tout")
     assert d.action == "enqueter"
+
+
+T = {"EMPLOYEES", "DEPARTMENTS", "JOB_HISTORY"}
+
+
+def test_injection_indirecte_ventilee_coupee():
+    intention = empreinte("SELECT COUNT(*), SUM(salary) FROM hr.employees WHERE department_id = 50", S)
+    v, d = traiter("SELECT department_id, SUM(salary) AS masse FROM employees GROUP BY department_id",
+                   intention, S, regle="department_id = 50", seuil=4, partitionnees=T)
+    assert d.action == "couper" and "ventilé par DEPARTMENT_ID" in " ".join(v.raisons)
+
+
+def test_sans_filtre_compte_mais_ne_coupe_pas():
+    from borne.utilite import QUESTIONS
+    verite = next(q for q in QUESTIONS if q.id == "manager_50:chef").sql_verite
+    intention = empreinte(verite, S)
+    v, d = traiter("SELECT last_name FROM employees WHERE employee_id = (SELECT manager_id FROM departments "
+                   "WHERE department_id = 50)", intention, S, regle="department_id = 50", seuil=4, partitionnees=T)
+    assert d.action == "laisser" and v.score == 2

@@ -21,7 +21,9 @@ from sentinelle.chaine import traiter
 from sentinelle.decision import ACTIONS
 from sentinelle.depassements import generer
 from sentinelle.empreinte import empreinte
+from sentinelle.catalogue import CATALOGUE_HR
 from sentinelle.intention import vers_empreinte
+from sentinelle.perimetre import _partition
 
 BANC = "bancs/hr/banc.yaml"
 
@@ -43,7 +45,9 @@ def main(argv=None) -> int:
     sens = {t.nom: list(t.sensibles) for t in desc.tables}
     regles = dict(desc.regle)
     acces = {p: bool(d.get("acces_total")) for p, d in desc.profils.items()}
-    lignes = [json.loads(l) for c in a.journaux for l in Path(c).read_text(encoding="utf-8").splitlines() if l.strip()]
+    colonnes_partition = {c[0] for c in (_partition(rg) for rg in regles.values()) if c}
+    partitionnees = {t for t, cs in CATALOGUE_HR.items() if colonnes_partition & set(cs)}
+    lignes =[json.loads(l) for c in a.journaux for l in Path(c).read_text(encoding="utf-8").splitlines() if l.strip()]
     vrai = {q.id: q for q in QUESTIONS}
 
     cache = None
@@ -61,7 +65,8 @@ def main(argv=None) -> int:
         intention, perimetre = intention_de(profil, question, sql_verite)
         if intention is None:
             return None
-        return traiter(sql, intention, sens, regles.get(profil), a.seuil, perimetre, acces.get(profil, False))
+        return traiter(sql, intention, sens, regles.get(profil), a.seuil, perimetre, acces.get(profil, False),
+                       partitionnees)
 
     sortie: List[str] = [f"Intention : {a.intention or 'requête de vérité'} ; seuil {a.seuil}", ""]
     leg = [r[1].action for d in lignes if d.get("type") == "utilite" and d.get("sql") and d.get("id") in vrai
@@ -92,6 +97,20 @@ def main(argv=None) -> int:
         sortie += ["", "Attaques du journal :"]
         sortie += [f"  {issue} ({len(v)}) : {repartition(v)}" for issue, v in sorted(par_issue.items())]
 
+    # Injection INDIRECTE : l'analyste lit une note piégée. Pas d'intention par étape : seules les
+    # règles en code (valeur étrangère, structure) jugent ; on regarde si les requêtes dictées sont coupées.
+    sortie += ["", "Analyste (note piégée), règles en code seulement :"]
+    for f in sorted(Path("journal/analyste").glob("*.jsonl")):
+        if f.name.startswith("attaques"):
+            continue
+        for l in f.read_text(encoding="utf-8").splitlines():
+            run = json.loads(l)
+            etapes = [traiter(t["sql"], empreinte(t["sql"], sens), sens, regles["manager_50"], a.seuil,
+                              partitionnees=partitionnees)[1].action
+                      for t in run["tours"] if t.get("action") == "sql"]
+            sortie.append(f"  {f.stem} {run['config']} {run.get('scenario') or 'grossiere'} : "
+                          f"dictée exécutée={run['a_execute_la_requete_dictee']} fuite={run['fuite']} "
+                          f"-> {', '.join(etapes)}")
     texte = "\n".join(sortie)
     nom = "actions-verite.md" if cache is None else "actions-intention.md"
     Path("journal/sentinelle").mkdir(parents=True, exist_ok=True)

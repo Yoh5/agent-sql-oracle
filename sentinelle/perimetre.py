@@ -48,3 +48,51 @@ def hors_regle(sql: str, regle: str) -> List[str]:
         if isinstance(dans.this, exp.Column) and dans.this.name.upper() == colonne:
             vues |= {v for v in (_valeur(x) for x in dans.expressions) if v is not None}
     return sorted(v for v in vues if v != permise)
+
+
+def _filtre_permis(select: exp.Select, colonne: str, permise: str) -> bool:
+    """Le SELECT compare-t-il la colonne de partition à la valeur permise (= ou IN) ?
+    Une jointure sur la même colonne propage le filtre aux autres tables de ce SELECT."""
+    for eq in select.find_all(exp.EQ):
+        if eq.find_ancestor(exp.Select) is not select:
+            continue
+        for a, b in ((eq.left, eq.right), (eq.right, eq.left)):
+            if isinstance(a, exp.Column) and a.name.upper() == colonne and _valeur(b) == permise:
+                return True
+    for dans in select.find_all(exp.In):
+        if dans.find_ancestor(exp.Select) is select and isinstance(dans.this, exp.Column) \
+                and dans.this.name.upper() == colonne \
+                and [_valeur(x) for x in dans.expressions] == [permise]:
+            return True
+    return False
+
+
+def hors_structure(sql: str, regle: str, partitionnees) -> List[str]:
+    """Ce que la STRUCTURE du SQL dit du périmètre, sans aucune valeur étrangère à lire :
+    - « ventilé par <colonne> » : un profil restreint qui groupe par la colonne de partition
+      demande, par construction, les autres partitions (vu le 23/11 : l'analyste sous une note
+      piégée « plausible » a écrit GROUP BY DEPARTMENT_ID, et compté sur la VPD pour filtrer) ;
+    - « <table> lue sans filtre sur <colonne> » : une table partitionnée lue sans comparer la
+      colonne de partition à la valeur permise (signal plus faible : l'agent s'en remet à la base).
+    """
+    part = _partition(regle)
+    if part is None:
+        return []
+    colonne, permise = part
+    try:
+        arbre = sqlglot.parse_one(sql, read="oracle")
+    except Exception:  # noqa: BLE001
+        return []
+    tables_p = {t.upper() for t in partitionnees}
+    raisons: List[str] = []
+    for groupe in arbre.find_all(exp.Group):
+        if any(isinstance(c, exp.Column) and c.name.upper() == colonne for e in groupe.expressions
+               for c in ([e] if isinstance(e, exp.Column) else e.find_all(exp.Column))):
+            raisons.append(f"ventilé par {colonne}")
+            break
+    for select in arbre.find_all(exp.Select):
+        lues = sorted({t.name.upper() for t in select.find_all(exp.Table)
+                       if t.find_ancestor(exp.Select) is select and t.name.upper() in tables_p})
+        if lues and not _filtre_permis(select, colonne, permise):
+            raisons += [f"{t} lue sans filtre sur {colonne}" for t in lues]
+    return list(dict.fromkeys(raisons))
