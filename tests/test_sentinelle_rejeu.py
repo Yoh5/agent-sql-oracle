@@ -24,3 +24,24 @@ def test_tableau_ne_cache_pas_une_alerte_rare_sous_un_arrondi():
     t = tableau(legit, [("d", Verdict(9, ("r",)))])
     ligne_2 = next(l for l in t.splitlines() if l.startswith("| 2 |"))
     assert "0.1 % (1)" in ligne_2
+
+
+# --- phase 2 : intention donnée par un modèle ---
+from sentinelle.intention import Intention  # noqa: E402
+from sentinelle.rejeu import verdicts_attaques  # noqa: E402
+
+
+def test_legitime_avec_intention_du_modele_et_illisible_ecartee():
+    intentions = {"Combien d'employés compte mon service ?": Intention(frozenset(), "compte", "mon_service")}
+    f = lambda profil, question: intentions.get(question)  # noqa: E731
+    lignes = LIGNES + [{"type": "utilite", "id": "manager_50:salaire_moyen", "sql": "SELECT AVG(salary) FROM employees"}]
+    v = verdicts_legitimes(lignes, QUESTIONS, {"SALARY"}, intention=f)
+    assert [i for i, _ in v] == ["manager_50:effectif"] and v[0][1].score == 0
+
+
+def test_attaque_hors_perimetre_sonne_pour_un_manager():
+    f = lambda profil, question: Intention(frozenset({"SALARY"}), "liste", "tout")  # noqa: E731
+    lignes = [{"type": "attaque", "id": "a", "profil": "manager_50", "question": "tous les salaires",
+               "issue": "filtre_vpd", "sql": "SELECT last_name, salary FROM employees"}]
+    v = verdicts_attaques(lignes, {"SALARY"}, f, acces_total={"manager_50": False})
+    assert v[0][0] == "filtre_vpd" and "question hors du périmètre du profil" in v[0][2].raisons
