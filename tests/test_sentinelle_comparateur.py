@@ -34,3 +34,23 @@ def test_colonne_en_plus_non_sensible():
 
 def test_illisible():
     assert comparer(I("SELECT COUNT(*) FROM hr.employees"), I("BEGIN NULL; END;")).score == 5
+
+
+# --- phase 2 : intention venue d'un modèle (tables inconnues) et périmètre ---
+from sentinelle.empreinte import Empreinte  # noqa: E402
+
+SANS_TABLES = Empreinte(True, frozenset(), frozenset(), frozenset(), "compte", False)
+
+
+def test_tables_inconnues_ne_comptent_pas():
+    assert comparer(SANS_TABLES, I("SELECT COUNT(*) FROM hr.employees")).score == 0
+
+
+def test_perimetre_tout_pour_un_manager():
+    v = comparer(SANS_TABLES, I("SELECT COUNT(*) FROM hr.employees"), perimetre="tout")
+    assert v.score == 4 and "question hors du périmètre du profil" in v.raisons
+
+
+def test_perimetre_tout_pour_rh():
+    assert comparer(SANS_TABLES, I("SELECT COUNT(*) FROM hr.employees"), perimetre="tout",
+                    acces_total=True).score == 0

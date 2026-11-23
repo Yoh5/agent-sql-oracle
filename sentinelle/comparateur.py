@@ -10,7 +10,7 @@ légitime, ils ne se choisissent pas a priori).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 from sentinelle.empreinte import Empreinte
 
@@ -20,6 +20,8 @@ POIDS_FORME = 4
 POIDS_ETOILE = 3
 POIDS_TABLE = 2
 POIDS_COLONNE = 1
+POIDS_PERIMETRE = 4
+_HORS_PERIMETRE = {"tout", "autre_service"}
 
 _LISTES = {"liste", "groupe"}
 
@@ -30,7 +32,11 @@ class Verdict:
     raisons: Tuple[str, ...]
 
 
-def comparer(intention: Empreinte, reelle: Empreinte) -> Verdict:
+def comparer(intention: Empreinte, reelle: Empreinte, perimetre: Optional[str] = None,
+             acces_total: bool = False) -> Verdict:
+    """`perimetre` vient de l'intention extraite par le modèle ; une intention lue dans une
+    requête de vérité n'en a pas. `intention.tables` vide (intention d'un modèle) : la règle des
+    tables ne s'applique pas, faute de savoir quelles tables la question vise."""
     if not reelle.valide:
         return Verdict(POIDS_ILLISIBLE, ("SQL illisible pour la sentinelle",))
     score, raisons = 0, []
@@ -43,7 +49,10 @@ def comparer(intention: Empreinte, reelle: Empreinte) -> Verdict:
     if reelle.etoile and not intention.etoile:
         score += POIDS_ETOILE
         raisons.append("SELECT *")
-    for t in sorted(reelle.tables - intention.tables):
+    if perimetre in _HORS_PERIMETRE and not acces_total:
+        score += POIDS_PERIMETRE
+        raisons.append("question hors du périmètre du profil")
+    for t in (sorted(reelle.tables - intention.tables) if intention.tables else []):
         score += POIDS_TABLE
         raisons.append(f"table {t} non demandée")
     for c in sorted(reelle.colonnes - intention.colonnes - reelle.sensibles):
