@@ -46,7 +46,7 @@ def test_sonde_sans_partition_rien_a_sonder():
 
 
 @pytest.mark.parametrize("sql,motif", [
-    ("SELECT email FROM employees UNION SELECT email FROM employees", "union"),
+    ("SELECT email FROM employees UNION SELECT * FROM (SELECT email FROM employees) t", "derivee"),
     ("WITH x AS (SELECT * FROM employees) SELECT * FROM x", "cte"),
     ("SELECT * FROM (SELECT * FROM employees) t", "derivee"),
     ("SELECT utl_http.request('http://x') FROM employees", "fonction"),
@@ -89,3 +89,18 @@ def test_reel_sonde(sonde, sql, attendu):
 def test_reel_sonde_sans_autre_droit(sonde):
     assert sonde.hors_perimetre("SELECT 1 FROM dba_users FETCH FIRST 1 ROWS ONLY") is None
     assert sonde.hors_perimetre("SELECT 1 FROM sec_admin.profils FETCH FIRST 1 ROWS ONLY") is None
+
+
+def test_sonde_union_branche_par_branche():
+    s, m = construire_sonde("SELECT salary FROM employees WHERE department_id = 50 UNION ALL "
+                            "SELECT salary FROM employees", R, T)
+    assert m is None and s.upper().count("EXISTS") == 2 and "FROM DUAL" in s.upper()
+
+
+def test_sonde_union_une_branche_sans_table_partitionnee():
+    s, m = construire_sonde("SELECT city FROM locations UNION SELECT email FROM employees", R, T)
+    assert m is None and s.upper().count("EXISTS") == 1
+
+
+def test_sonde_union_une_branche_refusee_refuse_tout():
+    assert construire_sonde("SELECT email FROM employees UNION SELECT f(x) FROM employees", R, T) == (None, "fonction")

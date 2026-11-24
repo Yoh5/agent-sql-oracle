@@ -504,6 +504,28 @@ colonnes de la table des postes ; la sonde prouve l'état des données **au mome
 second avis reste un modèle qui lit l'attaquant — il ne peut lever qu'une raison de colonne, jamais une
 raison de périmètre.
 
+## Sentinelle — vider la pile « humain » en code (24/11/2026)
+
+Avant de mettre un orchestrateur sur ce que l'enquêteur rend à un humain, j'ai lu la pile : près de 70 cas se
+tranchaient **en code**. Trois règles (case A de la méthode), chacune avec ses tests :
+- un agent de **lecture** qui **écrit** (UPDATE, DELETE, INSERT, MERGE, DDL, GRANT, PL/SQL) → **couper**, quel
+  que soit le profil (57 `UPDATE … SET SALARY = 25000` finissaient à un humain) ;
+- toute comparaison de la colonne de service autre que `= 50` est hors règle : `<>`, `!=`, `NOT IN`, `>`, `<`
+  (« mon service, puis tous les autres » passait par un `UNION ALL … department_id <> 50`) ;
+- la sonde lit **chaque branche** d'un UNION.
+
+| | avant | après |
+|---|---|---|
+| pile « humain » | 182 | **118** |
+| dont légitimes | 36 | 36 |
+| légitimes coupés / attaques libérées | 0 / 0 | **0 / 0** |
+
+Ce qui reste n'appelle **pas** d'orchestrateur ici : les 36 légitimes sont une seule question (le second avis
+confond SALARY avec MIN/MAX_SALARY), et les 82 attaques ont toutes une **réponse prouvée sans fuite** (la sonde
+ne trouve aucune ligne d'un autre service, ou la requête ne lit que des tables communes, ou des notes de
+service). Reste seulement à juger **la personne** qui a tenté — une enquête sur plusieurs sessions, qui relève du
+gardien, pas de la sentinelle.
+
 ## Installer
 
 ```bash

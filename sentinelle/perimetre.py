@@ -28,9 +28,15 @@ def _valeur(n: exp.Expression) -> Optional[str]:
     return n.name if isinstance(n, exp.Literal) else None
 
 
+_INVERSE = {"<>": "<>", ">": "<", "<": ">", ">=": "<=", "<=": ">="}
+_OPERATEURS = ((exp.NEQ, "<>"), (exp.GT, ">"), (exp.LT, "<"), (exp.GTE, ">="), (exp.LTE, "<="))
+
+
 def hors_regle(sql: str, regle: str) -> List[str]:
-    """Les valeurs de la colonne de partition comparées dans le SQL et différentes de la règle,
-    triées et sans doublon. Un SQL illisible ne dépasse rien ici (l'empreinte le signale déjà)."""
+    """Ce qui, dans le SQL, compare la colonne de partition à autre chose que la valeur permise : les
+    valeurs étrangères (`= 80`, `IN (50, 80)`) et toute autre comparaison (`<> 50`, `NOT IN 50`,
+    `> 40`… — 24/11 : « mon service, puis tous les autres » passait par un `<> 50`), y compris dans
+    une sous-requête. Trié, sans doublon. Un SQL illisible ne dépasse rien ici (l'empreinte le signale)."""
     part = _partition(regle)
     if part is None:
         return []
@@ -40,14 +46,39 @@ def hors_regle(sql: str, regle: str) -> List[str]:
     except Exception:  # noqa: BLE001
         return []
     vues = set()
+    est_col = lambda n: isinstance(n, exp.Column) and n.name.upper() == colonne  # noqa: E731
     for eq in arbre.find_all(exp.EQ):
         for a, b in ((eq.left, eq.right), (eq.right, eq.left)):
-            if isinstance(a, exp.Column) and a.name.upper() == colonne and _valeur(b) is not None:
+            if est_col(a) and _valeur(b) is not None and _valeur(b) != permise:
                 vues.add(_valeur(b))
+    for classe, op in _OPERATEURS:
+        for c in arbre.find_all(classe):
+            if est_col(c.left) and _valeur(c.right) is not None:
+                vues.add(f"{op} {_valeur(c.right)}")
+            elif est_col(c.right) and _valeur(c.left) is not None:
+                vues.add(f"{_INVERSE[op]} {_valeur(c.left)}")
     for dans in arbre.find_all(exp.In):
-        if isinstance(dans.this, exp.Column) and dans.this.name.upper() == colonne:
-            vues |= {v for v in (_valeur(x) for x in dans.expressions) if v is not None}
-    return sorted(v for v in vues if v != permise)
+        if not est_col(dans.this):
+            continue
+        valeurs = [v for v in (_valeur(x) for x in dans.expressions) if v is not None]
+        if isinstance(dans.parent, exp.Not):
+            vues |= {f"NOT IN {v}" for v in valeurs}
+        else:
+            vues |= {v for v in valeurs if v != permise}
+    return sorted(vues)
+
+
+_ECRITURE = re.compile(r"^\s*(?!(?:SELECT|WITH)(?![\w$#])|\()\w+", re.I)
+
+
+def ecriture(sql: str) -> bool:
+    """Autre chose qu'une lecture : UPDATE, DELETE, INSERT, MERGE, DDL, GRANT, bloc PL/SQL… — y compris
+    quand sqlglot ne sait pas lire. Un agent de LECTURE qui écrit, c'est la case A : couper, en code."""
+    try:
+        arbres = [a for a in sqlglot.parse(sql, read="oracle") if a is not None]
+    except Exception:  # noqa: BLE001
+        return any(_ECRITURE.match(m) for m in (sql or "").split(";") if m.strip())
+    return any(not isinstance(a, (exp.Select, exp.SetOperation)) for a in arbres)
 
 
 def _filtre_permis(select: exp.Select, colonne: str, permise: str) -> bool:

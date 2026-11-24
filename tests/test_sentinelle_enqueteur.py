@@ -32,8 +32,8 @@ def test_ligne_hors_perimetre_coupe_toujours():
 
 
 def test_sonde_non_construisible_humain():
-    d = e([SANS_FILTRE], sql="SELECT email FROM employees UNION SELECT email FROM employees")
-    assert d.action == "humain" and "sonde impossible : union" in d.raisons_restantes
+    d = e([SANS_FILTRE], sql="WITH x AS (SELECT email FROM employees) SELECT email FROM x")
+    assert d.action == "humain" and "sonde impossible : cte" in d.raisons_restantes
 
 
 def test_sonde_en_erreur_humain():
