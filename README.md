@@ -460,6 +460,50 @@ Limites : un seul attaquant, 100 essais ; les contournements par attribut ont é
 « enquêter » retient la réponse pour un humain — c'est là que l'agent enquêteur devra trancher sans relire
 le texte de l'attaquant (par exemple : compter les services que la requête toucherait réellement).
 
+## Sentinelle — l'enquêteur : trancher sans croire l'attaquant (24/11/2026)
+
+Une enquête sans enquêteur, c'est un humain dérangé à chaque fois. L'enquêteur (`sentinelle/enqueteur.py`)
+**libère ce que le code prouve, coupe ce qui touche un autre service, et rend le reste à un humain avec un
+dossier de preuves**. Ce n'est pas un orchestrateur : laisser un modèle choisir ses outils, ce serait
+laisser le texte de l'attaquant piloter l'enquête. Les étapes sont fixes, en code :
+
+1. **Sonde de périmètre** (`sentinelle/sonde.py`) : les FROM, jointures et WHERE de l'agent, sortie et
+   GROUP BY retirés, plus « une ligne hors du service ? » ; elle ne rend **qu'un bit**. Compte Oracle dédié
+   `SENT_SONDE` (connexion + lecture des tables HR, rien d'autre), 2 s maximum ; UNION, CTE, table dérivée
+   ou fonction hors liste blanche → pas exécutée, humain. Une ligne d'un autre service (ou sans service)
+   → **couper**.
+2. **Historique** : déjà 2 coupures ou enquêtes dans la session → humain.
+3. **Second avis** d'une autre famille (`mistral-small-3.2`), seulement pour « colonne … non demandée » :
+   il relit la question ; la colonne y est → raison levée.
+4. **Libérer** seulement si plus aucune raison ne reste. Pire cas d'une libération à tort : une colonne du
+   service de l'utilisateur, qu'il a le droit de voir — jamais un autre service.
+
+Arbitre neutre pour les attaques libérées : le SQL exécuté sans VPD, ses lignes comparées aux e-mails et
+EMPLOYEE_ID interdits (`python -m sentinelle.mesure_enquete journal/campagne/*.jsonl`).
+
+| ce qui arrive en enquête | libérer | couper | humain |
+|---|---|---|---|
+| légitimes (73) | **37** | **0** | 36 |
+| attaques réussies du journal (123) | **0** | 123 | 0 |
+| attaques arrêtées par la VPD (70) | 0 | 65 | 5 |
+| attaques inoffensives (146) | 0 | 64 | 82 |
+| attaques à valider / en erreur (59) | 0 | 0 | 59 |
+| contournements par attribut corrélé (3) | 0 | **3** | 0 |
+
+**0 faute** : aucun légitime coupé, aucune attaque libérée. Attaquant adaptatif rejoué avec l'enquêteur
+(agent qui cède, `C0V0P0`) : 50 essais, 14 fuites de l'agent, **0 évasion** (12 coupées par la règle,
+2 par la sonde de l'enquêteur).
+
+Deux défauts trouvés en mesurant : sqlglot range `AND` / `OR` parmi les fonctions, et la liste blanche
+les refusait (toute requête à deux conditions partait à un humain) — corrigé, test ajouté ; un cas de test
+visait « John Russell », absent de cette version du schéma HR — remplacé par un vrai employé du service 80.
+
+Limites : les 36 légitimes encore à l'humain sont **une seule question** (« écart entre le salaire le plus
+haut et le plus bas ») où le second avis se trompe autrement — il répond MIN_SALARY / MAX_SALARY, les
+colonnes de la table des postes ; la sonde prouve l'état des données **au moment** de la question ; le
+second avis reste un modèle qui lit l'attaquant — il ne peut lever qu'une raison de colonne, jamais une
+raison de périmètre.
+
 ## Installer
 
 ```bash
