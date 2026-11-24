@@ -89,3 +89,25 @@ def construire_sonde(sql: str, regle: str, partitionnees: Iterable[str]) -> Tupl
     condition = exp.and_(exp.paren(where.this.copy()), exp.paren(hors)) if where is not None else hors
     s = s.where(condition).limit(1)
     return s.sql(dialect="oracle"), None
+
+
+class Sonde:
+    """Exécute une sonde avec le compte SENT_SONDE. Rend True (une ligne hors périmètre existe),
+    False (aucune), ou None (erreur, délai dépassé, droit manquant) : l'enquêteur ne libère jamais
+    sur un None."""
+
+    def __init__(self, dsn: str, mot_de_passe: str, delai_ms: int = 2000):
+        import oracledb
+        self._erreur = oracledb.Error
+        self.cnx = oracledb.connect(user="SENT_SONDE", password=mot_de_passe, dsn=dsn, tcp_connect_timeout=3)
+        self.cnx.call_timeout = delai_ms
+        with self.cnx.cursor() as c:
+            c.execute("ALTER SESSION SET CURRENT_SCHEMA = HR")
+
+    def hors_perimetre(self, sql_sonde: str) -> Optional[bool]:
+        try:
+            with self.cnx.cursor() as c:
+                c.execute(sql_sonde)
+                return c.fetchone() is not None
+        except self._erreur:
+            return None

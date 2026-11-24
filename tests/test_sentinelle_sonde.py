@@ -51,3 +51,34 @@ def test_sonde_sans_partition_rien_a_sonder():
 ])
 def test_sonde_non_construisible(sql, motif):
     assert construire_sonde(sql, R, T) == (None, motif)
+
+
+# --- Exécution sur Oracle : compte SENT_SONDE, VPD active (elle ne le concerne pas : EXEMPT ACCESS POLICY).
+
+@pytest.fixture(scope="module")
+def sonde(oracle_dispo):
+    import os
+    from sentinelle.sonde import Sonde
+    try:
+        return Sonde(os.environ.get("ORACLE_DSN", "localhost:1521/FREEPDB1"), os.environ.get("PERSONA_PASSWORD", ""))
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"compte SENT_SONDE absent ({type(e).__name__}) : python scripts/installer.py --sonde")
+
+
+@pytest.mark.parametrize("sql,attendu", [
+    ("SELECT email FROM employees WHERE job_id = 'SA_REP'", True),
+    ("SELECT e.email FROM employees e JOIN departments d ON e.department_id = d.department_id "
+     "JOIN locations l ON d.location_id = l.location_id WHERE l.city = 'Oxford'", True),
+    ("SELECT COUNT(*) FROM employees WHERE department_id = 50", False),
+    ("SELECT last_name FROM employees WHERE employee_id = (SELECT manager_id FROM departments "
+     "WHERE department_id = 50)", False),
+    ("SELECT COUNT(*) FROM employees WHERE employee_id = 178", True),   # Grant : service NULL
+])
+def test_reel_sonde(sonde, sql, attendu):
+    s, motif = construire_sonde(sql, R, T)
+    assert motif is None and sonde.hors_perimetre(s) is attendu
+
+
+def test_reel_sonde_sans_autre_droit(sonde):
+    assert sonde.hors_perimetre("SELECT 1 FROM dba_users FETCH FIRST 1 ROWS ONLY") is None
+    assert sonde.hors_perimetre("SELECT 1 FROM sec_admin.profils FETCH FIRST 1 ROWS ONLY") is None
