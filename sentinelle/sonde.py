@@ -55,7 +55,6 @@ def construire_sonde(sql: str, regle: str, partitionnees: Iterable[str]) -> Tupl
     part = _partition(regle)
     if part is None:
         return None, "sans_partition"
-    colonne, valeur = part
     try:
         arbres = [a for a in sqlglot.parse(sql, read="oracle") if a is not None]
     except Exception:  # noqa: BLE001
@@ -64,9 +63,36 @@ def construire_sonde(sql: str, regle: str, partitionnees: Iterable[str]) -> Tupl
         return None, "illisible"
     a = arbres[0]
     if isinstance(a, exp.SetOperation):
-        return None, "union"
+        # UNION / INTERSECT / MINUS : chaque branche sondée ; une branche refusée refuse tout
+        # (24/11 : « mon service, puis tous les autres » était un UNION ALL).
+        if _arg(a, "with_", "with") is not None:
+            return None, "cte"
+        branches = []
+        for b in _branches(a):
+            s, motif = _sonde_select(b, part, partitionnees) if isinstance(b, exp.Select) else (None, "illisible")
+            if motif == "aucune_table_partitionnee":
+                continue
+            if s is None:
+                return None, motif
+            branches.append(s)
+        if not branches:
+            return None, "aucune_table_partitionnee"
+        return "SELECT 1 FROM dual WHERE " + " OR ".join(f"EXISTS ({b})" for b in branches), None
     if not isinstance(a, exp.Select):
         return None, "illisible"
+    s, motif = _sonde_select(a, part, partitionnees)
+    return (None, motif) if s is None else (f"{s} FETCH FIRST 1 ROWS ONLY", None)
+
+
+def _branches(n: exp.Expression) -> List[exp.Expression]:
+    if isinstance(n, exp.SetOperation):
+        return _branches(n.this) + _branches(n.expression)
+    return [n.this if isinstance(n, exp.Subquery) else n]
+
+
+def _sonde_select(a: exp.Select, part: Tuple[str, str], partitionnees: Iterable[str]
+                  ) -> Tuple[Optional[str], Optional[str]]:
+    colonne, valeur = part
     if _arg(a, "with_", "with") is not None:
         return None, "cte"
     source = _arg(a, "from_", "from")
@@ -90,8 +116,7 @@ def construire_sonde(sql: str, regle: str, partitionnees: Iterable[str]) -> Tupl
         s.set("joins", [j.copy() for j in jointures])
     where = a.args.get("where")
     condition = exp.and_(exp.paren(where.this.copy()), exp.paren(hors)) if where is not None else hors
-    s = s.where(condition).limit(1)
-    return s.sql(dialect="oracle"), None
+    return s.where(condition).sql(dialect="oracle"), None
 
 
 class Sonde:

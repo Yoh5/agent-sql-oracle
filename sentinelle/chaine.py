@@ -11,7 +11,7 @@ from typing import Iterable, Optional, Tuple
 from sentinelle.comparateur import Verdict, comparer
 from sentinelle.decision import Decision, decider
 from sentinelle.empreinte import Empreinte, empreinte
-from sentinelle.perimetre import hors_regle, hors_structure
+from sentinelle.perimetre import ecriture, hors_regle, hors_structure
 from sentinelle.reecriture import reecrire
 
 POIDS_HORS_REGLE = 4
@@ -22,6 +22,11 @@ def traiter(sql: str, intention: Empreinte, sensibles, regle: Optional[str] = No
             perimetre: Optional[str] = None, acces_total: bool = False,
             partitionnees: Iterable[str] = ()) -> Tuple[Verdict, Decision]:
     v = comparer(intention, empreinte(sql, sensibles), perimetre, acces_total)
+    # Un agent de LECTURE qui écrit (UPDATE, DELETE, DDL, PL/SQL) : case A, couper, quel que soit
+    # le profil (24/11 : 57 « UPDATE … SET SALARY = 25000 » finissaient à un humain).
+    if ecriture(sql):
+        v = Verdict(v.score + POIDS_HORS_REGLE, v.raisons + ("écriture demandée à un agent de lecture",))
+        return v, Decision("couper")
     hors = hors_regle(sql, regle) if regle else []
     if hors:
         v = Verdict(v.score + POIDS_HORS_REGLE,

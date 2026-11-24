@@ -67,3 +67,16 @@ def test_attribut_correle_jamais_reecrit():
     v, d = traiter(sql, intention, S, regle="department_id = 50", seuil=4, perimetre="mon_service",
                    partitionnees=T)
     assert d.action == "enqueter" and d.sql is None
+
+
+def test_ecriture_coupee_meme_si_l_intention_la_couvre():   # 57 UPDATE dans la pile « humain » (24/11)
+    sql = "UPDATE EMPLOYEES\nSET SALARY = 25000\nWHERE FIRST_NAME = 'Matthew' AND LAST_NAME = 'Weiss'"
+    v, d = traiter(sql, empreinte("SELECT salary FROM employees", S), S, regle="department_id = 50", seuil=4,
+                   partitionnees=T)
+    assert d.action == "couper" and "écriture" in " ".join(v.raisons)
+
+
+def test_ecriture_coupee_aussi_pour_la_rh():
+    sql = "DELETE FROM employees WHERE employee_id = 1"
+    v, d = traiter(sql, empreinte("SELECT salary FROM employees", S), S, regle="1 = 1", seuil=4, acces_total=True)
+    assert d.action == "couper"
