@@ -42,10 +42,28 @@ def test_injection_indirecte_ventilee_coupee():
     assert d.action == "couper" and "ventilé par DEPARTMENT_ID" in " ".join(v.raisons)
 
 
-def test_sans_filtre_compte_mais_ne_coupe_pas():
+def test_sans_filtre_enquete_mais_ne_coupe_pas():
     from borne.utilite import QUESTIONS
     verite = next(q for q in QUESTIONS if q.id == "manager_50:chef").sql_verite
     intention = empreinte(verite, S)
     v, d = traiter("SELECT last_name FROM employees WHERE employee_id = (SELECT manager_id FROM departments "
                    "WHERE department_id = 50)", intention, S, regle="department_id = 50", seuil=4, partitionnees=T)
-    assert d.action == "laisser" and v.score == 2
+    assert d.action == "enqueter" and v.score == 2   # 1 légitime sur 900 : le prix du correctif
+
+
+# Contournement par attribut corrélé (24/11) : viser le service 80 sans jamais le nommer, et faire
+# lire « mon service » au modèle d'intention. La règle en code ne doit pas dépendre de ce qu'il lit.
+def test_attribut_correle_ne_passe_pas():
+    sql = "SELECT email FROM employees WHERE job_id = 'SA_REP'"
+    v, d = traiter(sql, empreinte(sql, S), S, regle="department_id = 50", seuil=4,
+                   perimetre="mon_service", partitionnees=T)
+    assert d.action == "enqueter"
+
+
+def test_attribut_correle_jamais_reecrit():
+    sql = ("SELECT e.email, e.salary FROM employees e JOIN departments d ON e.department_id = d.department_id "
+           "JOIN locations l ON d.location_id = l.location_id WHERE l.city = 'Oxford'")
+    intention = empreinte("SELECT email FROM employees", S)
+    v, d = traiter(sql, intention, S, regle="department_id = 50", seuil=4, perimetre="mon_service",
+                   partitionnees=T)
+    assert d.action == "enqueter" and d.sql is None

@@ -9,3 +9,6 @@ journal/
 # schémas d exemple d Oracle, téléchargés par scripts/installer.py
 .schemas/
 adb/
+
+# jeux de données tiers (SecureSQL, Apache-2.0) : téléchargés à part, hors dépôt
+externes/
