@@ -26,6 +26,9 @@ FONCTIONS_PERMISES = frozenset({
     "Initcap", "Least", "Length", "Lower", "Max", "Median", "Min", "MonthsBetween", "Nullif", "Pad",
     "Rank", "Replace", "Round", "RowNumber", "Stddev", "StrPosition", "StrToDate", "Substring", "Sum",
     "ToChar", "ToNumber", "Trim", "Upper",
+    # des OPÉRATEURS que sqlglot range parmi les fonctions (vu le 24/11 : `AND` refusé, John Russell
+    # envoyé à un humain au lieu d'être coupé) :
+    "And", "Or", "Exists", "Pow", "RegexpLike",
 })
 _ANONYMES_PERMISES = frozenset({"TRUNC"})
 

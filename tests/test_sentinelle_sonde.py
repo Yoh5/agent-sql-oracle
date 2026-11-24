@@ -34,6 +34,13 @@ def test_sonde_garde_la_sous_requete_du_where():   # manager_50:chef
     assert "MANAGER_ID" in s.upper()
 
 
+def test_sonde_accepte_and_or_not_et_les_comparaisons():   # And/Or héritent de Func chez sqlglot (24/11)
+    s, m = construire_sonde("SELECT email FROM employees WHERE first_name = 'John' AND (last_name = 'Russell' "
+                            "OR NOT salary > 1) AND hire_date BETWEEN SYSDATE - 10 AND SYSDATE "
+                            "AND email LIKE 'J%' AND manager_id IS NOT NULL", R, T)
+    assert m is None and "RUSSELL" in s.upper()
+
+
 def test_sonde_sans_partition_rien_a_sonder():
     assert construire_sonde("SELECT COUNT(*) FROM employees", "1 = 1", T) == (None, "sans_partition")
 
