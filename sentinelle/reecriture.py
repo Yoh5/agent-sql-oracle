@@ -6,7 +6,7 @@ seulement ce qui SORT par ce que l'intention demande :
 - compte → COUNT(*) ; somme / moyenne / minimum / maximum → la fonction sur LA colonne demandée ;
 - liste → les colonnes demandées, et elles seules.
 Tout cas douteux rend None (GROUP BY, UNION, SQL illisible, liste sans colonne, plusieurs
-colonnes pour un agrégat) : l'action devient alors « enquêter », jamais une réécriture devinée.
+colonnes pour un agrégat, compte qui nomme une colonne, calcul sur plusieurs agrégats) : l'action devient alors « enquêter », jamais une réécriture devinée.
 """
 from __future__ import annotations
 
@@ -32,6 +32,10 @@ def reecrire(sql: str, intention: Empreinte, sensibles) -> Optional[str]:
         return None
     cols = sorted(c.lower() for c in intention.colonnes)
     if intention.forme == "compte":
+        # Un compte qui nomme une colonne est ambigu : COUNT(*), COUNT(col) ou COUNT(DISTINCT col) ?
+        # (24/11, exécuté sur Oracle : « managers différents » réécrit en COUNT(*) rendait un faux chiffre.)
+        if cols:
+            return None
         sortie = [exp.Count(this=exp.Star())]
     elif intention.forme in _FONCTIONS:
         if len(cols) != 1:

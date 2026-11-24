@@ -36,3 +36,16 @@ def test_liste_sans_colonne_refusee():
     vide = E("SELECT COUNT(*) FROM hr.employees")
     vide = vide.__class__(True, frozenset(), frozenset(), frozenset(), "liste", False)
     assert reecrire("SELECT last_name FROM employees", vide, S) is None
+
+
+# 24/11 : réécritures exécutées sur Oracle — 8 sur 127 rendaient un mauvais chiffre.
+def test_compte_qui_nomme_une_colonne_n_est_pas_reecrit():
+    # « combien de managers différents » : COUNT(*), COUNT(col) ou COUNT(DISTINCT col) ? ambigu.
+    intention = empreinte("SELECT COUNT(DISTINCT manager_id) FROM employees", S)
+    assert reecrire("SELECT * FROM employees WHERE department_id = 50", intention, S) is None
+
+
+def test_calcul_sur_agregats_n_est_pas_reecrit():
+    intention = empreinte("SELECT MAX(salary) - MIN(salary) FROM employees", S)
+    assert intention.forme == "calcul"
+    assert reecrire("SELECT * FROM employees WHERE department_id = 50", intention, S) is None

@@ -526,6 +526,31 @@ ne trouve aucune ligne d'un autre service, ou la requête ne lit que des tables 
 service). Reste seulement à juger **la personne** qui a tenté — une enquête sur plusieurs sessions, qui relève du
 gardien, pas de la sentinelle.
 
+## Sentinelle — les réécritures jugées sur les lignes d'Oracle (24/11/2026)
+
+Jusqu'ici, « 121 réécritures sur 127 justes » se lisait sur l'**empreinte** du SQL. Exécutées sur Oracle
+(`python -m sentinelle.mesure_reecritures`), réécriture et requête de vérité sous le même compte, avec le juge du
+banc d'utilité : **119/127 exactes, 8 fausses** — un mauvais chiffre rendu à l'utilisateur, pire qu'une enquête :
+- « combien de managers **différents** » réécrit en `COUNT(*)` (6) ;
+- « écart entre le plus haut et le plus bas salaire » : l'empreinte réduisait `MAX - MIN` à « maximum », la
+  réécriture rendait `MAX` seul (2).
+
+Corrections, en code : un **compte qui nomme une colonne** n'est plus réécrit (COUNT(*), COUNT(col) ou
+COUNT(DISTINCT col) ? ambigu) ; plusieurs agrégats dans un même item donnent la forme **« calcul »**, que la
+réécriture refuse.
+
+| intention | réécritures | exactes (lignes Oracle) | fausses |
+|---|---|---|---|
+| requête de vérité, avant | 127 | 119 | 8 |
+| requête de vérité, après | 119 | **119** | **0** |
+| modèle, avant | 125 | 119 | 6 |
+| modèle, après | 90 | 88 | 2 |
+
+Le prix : avec l'intention du modèle, 35 dépassements de plus partent en enquête au lieu d'être réécrits —
+la consigne lui demande de nommer la colonne d'un compte. Les 2 fausses restantes viennent du modèle lui-même :
+pour « managers différents », il répond « compte, sans colonne » ; rien dans son intention ne dit « distinct ».
+Le corriger, c'est retoucher sa consigne — sur un jeu de questions séparé d'abord.
+
 ## Installer
 
 ```bash
