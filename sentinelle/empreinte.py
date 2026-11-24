@@ -27,6 +27,8 @@ import sqlglot
 from sqlglot import exp
 
 FORMES = ("compte", "somme", "moyenne", "minimum", "maximum", "groupe", "liste")
+#: Ce que l'empreinte d'un SQL peut dire en plus de ce qu'on demande au modèle d'intention.
+FORMES_EMPREINTE = FORMES + ("calcul",)
 
 _AGREGATS = {exp.Count: "compte", exp.Sum: "somme", exp.Avg: "moyenne",
              exp.Min: "minimum", exp.Max: "maximum"}
@@ -145,15 +147,19 @@ class _Lecteur:
     @staticmethod
     def _forme_item(item: exp.Expression) -> Optional[str]:
         """La forme d'un item agrégé : la première fonction d'agrégat rencontrée, à condition
-        qu'aucune colonne ne soit hors d'un agrégat (ROUND(AVG(x),2) → moyenne)."""
+        qu'aucune colonne ne soit hors d'un agrégat (ROUND(AVG(x),2) → moyenne). Plusieurs agrégats
+        dans un même item (MAX(x) - MIN(x)) : « calcul » — l'empreinte ne prétend plus que c'est un
+        maximum (24/11 : la réécriture rendait MAX seul pour un écart)."""
         noeud = item.this if isinstance(item, exp.Alias) else item
-        premiere = next((n for n in noeud.walk() if isinstance(n, _CLASSES_AGREGAT)), None)
-        if premiere is None:
+        agregats = [n for n in noeud.walk() if isinstance(n, _CLASSES_AGREGAT)
+                    and n.find_ancestor(*_CLASSES_AGREGAT) is None]
+        if not agregats:
             return None
+        premiere = agregats[0]
         for col in noeud.find_all(exp.Column):
             if col.find_ancestor(*_CLASSES_AGREGAT) is None:
                 return None
-        return _AGREGATS[type(premiere)]
+        return "calcul" if len(agregats) > 1 else _AGREGATS[type(premiere)]
 
     @staticmethod
     def _branches(requete: exp.Expression) -> List[exp.Select]:

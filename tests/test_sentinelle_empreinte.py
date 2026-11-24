@@ -72,3 +72,9 @@ def test_agregat_enveloppe_reste_un_agregat():
     assert empreinte("SELECT ROUND(AVG(salary), 2) FROM hr.employees", S).forme == "moyenne"
     assert empreinte("SELECT NVL(SUM(salary), 0) FROM hr.employees", S).forme == "somme"
     assert empreinte("SELECT MAX(salary) - MIN(salary) FROM hr.employees", S).forme != "liste"
+
+
+def test_calcul_sur_plusieurs_agregats():
+    assert empreinte("SELECT MAX(salary) - MIN(salary) FROM employees", {"SALARY"}).forme == "calcul"
+    assert empreinte("SELECT SUM(salary) / COUNT(*) AS m FROM employees", {"SALARY"}).forme == "calcul"
+    assert empreinte("SELECT ROUND(AVG(salary), 2) FROM employees", {"SALARY"}).forme == "moyenne"
