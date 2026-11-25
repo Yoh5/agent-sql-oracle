@@ -5,6 +5,8 @@ Un workflow en code, pas un orchestrateur : l'ordre des étapes est fixe, et auc
 2. historique de session : déjà 2 coupures ou enquêtes → humain (l'attaquant qui insiste) ;
 3. raisons levées une à une : « … lue sans filtre » par la sonde ; « colonne … non demandée / en plus »
    par un second avis d'une autre famille (qui lit la question : il ne peut lever que ça) ;
+   « intention illisible » (25/11) : le second avis lit la question en entier, et la chaîne est rejouée
+   avec son intention (`rejuger`) ; les raisons de ce rejeu remplacent l'illisible ;
 4. libérer seulement si plus aucune raison ne reste. Toute autre raison → humain, avec le dossier.
 
 Une libération à tort ne peut rendre que des lignes du service de l'utilisateur (la sonde l'a prouvé),
@@ -19,10 +21,13 @@ from typing import Callable, Iterable, Optional, Sequence, Tuple
 from sentinelle.intention import Intention
 from sentinelle.sonde import construire_sonde
 
+ILLISIBLE = "intention illisible"   # même texte que sentinelle.chaine.INTENTION_ILLISIBLE
+
 ACTIONS_ENQUETE = ("liberer", "couper", "humain")
 SUSPECTES = ("couper", "enqueter", "humain")
 SEUIL_SESSION = 2
 
+_ACCES_TOTAL = re.compile(r"^\s*1\s*=\s*1\s*$")
 _SANS_FILTRE = re.compile(r"^\S+ lue sans filtre sur \S+$")
 _COLONNE = re.compile(r"^colonne (?:sensible )?(\S+) (?:non demandée|en plus)$")
 
@@ -40,17 +45,22 @@ class Dossier:
 
 def enqueter(sql: str, raisons: Sequence[str], regle: str, partitionnees: Iterable[str],
              sonder: Callable[[str], Optional[bool]], second_avis: Callable[[], Optional[Intention]],
-             historique: Sequence[str]) -> Dossier:
+             historique: Sequence[str],
+             rejuger: Optional[Callable[[Intention], Sequence[str]]] = None) -> Dossier:
     n_suspects = sum(a in SUSPECTES for a in historique)
     sonde, motif = construire_sonde(sql, regle, partitionnees)
-    hors = sonder(sonde) if sonde is not None else None
+    if sonde is None and _ACCES_TOTAL.match(regle or ""):
+        # Règle « 1 = 1 » (la RH) : tout le schéma est permis, aucune ligne ne peut être hors périmètre.
+        hors, motif = False, None
+    else:
+        hors = sonder(sonde) if sonde is not None else None
 
     def dossier(action, levees=(), restantes=(), avis=None):
         return Dossier(action, tuple(levees), tuple(restantes), sonde, hors, avis, n_suspects)
 
     if hors is True:
         return dossier("couper", restantes=raisons)
-    if sonde is None:
+    if sonde is None and motif is not None:
         return dossier("humain", restantes=(f"sonde impossible : {motif}",) + tuple(raisons))
     if hors is None:
         return dossier("humain", restantes=("sonde en erreur",) + tuple(raisons))
@@ -58,6 +68,16 @@ def enqueter(sql: str, raisons: Sequence[str], regle: str, partitionnees: Iterab
         return dossier("humain", restantes=(f"session suspecte ({n_suspects} décisions)",) + tuple(raisons))
 
     levees, restantes, colonnes_avis = [], [], None
+    if ILLISIBLE in raisons and rejuger is not None:
+        i = second_avis()
+        if i is None:
+            return dossier("humain", restantes=raisons)
+        # Les raisons « colonne … » du rejeu viennent de l'intention du second avis lui-même : elles ne
+        # peuvent pas être levées par lui (la colonne n'est pas dans ce qu'il a lu).
+        colonnes_avis = tuple(sorted(c.upper() for c in i.colonnes))
+        nouvelles = tuple(r for r in rejuger(i) if r not in raisons)
+        levees.append(ILLISIBLE)
+        raisons = tuple(r for r in raisons if r != ILLISIBLE) + nouvelles
     for r in raisons:
         m = _COLONNE.match(r)
         if _SANS_FILTRE.match(r):

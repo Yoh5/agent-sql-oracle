@@ -81,21 +81,58 @@ def ecriture(sql: str) -> bool:
     return any(not isinstance(a, (exp.Select, exp.SetOperation)) for a in arbres)
 
 
-def _filtre_permis(select: exp.Select, colonne: str, permise: str) -> bool:
-    """Le SELECT compare-t-il la colonne de partition à la valeur permise (= ou IN) ?
-    Une jointure sur la même colonne propage le filtre aux autres tables de ce SELECT."""
+def _conjoint(n: exp.Expression) -> bool:
+    """La comparaison est-elle une condition OBLIGATOIRE de son WHERE / HAVING / ON : reliée à la racine
+    par des AND (et des parenthèses) seulement ? `department_id = 50 OR employee_id IN (…)` ne filtre
+    rien (25/11 : gemini-2.5-pro en boîte blanche, l'e-mail d'un employé d'un autre service sortait)."""
+    p = n.parent
+    while isinstance(p, (exp.And, exp.Paren)):
+        p = p.parent
+    return isinstance(p, (exp.Where, exp.Having, exp.Join))
+
+
+def _non_filtrees(select: exp.Select, colonne: str, permise: str, tables_p) -> List[str]:
+    """Les tables partitionnées de CE SELECT dont la colonne de partition n'est pas ramenée à la
+    valeur permise. Le filtre se juge par OCCURRENCE de table (par alias), pas pour tout le SELECT :
+    une auto-jointure `employees e JOIN employees m … WHERE e.department_id = 50` laisse `m` libre
+    (25/11 : les e-mails des managers d'autres services sortaient avec un score de 0). Une égalité
+    `a.<colonne> = b.<colonne>` propage le filtre d'une occurrence à l'autre ; une colonne non
+    qualifiée vaut pour toutes les occurrences (Oracle refuserait une colonne ambiguë)."""
+    occ = {}
+    for t in select.find_all(exp.Table):
+        if t.find_ancestor(exp.Select) is select and t.name.upper() in tables_p:
+            occ[(t.alias_or_name or t.name).upper()] = t.name.upper()
+    if not occ:
+        return []
+    filtrees, liens = set(), []
+
+    def qual(c: exp.Column):
+        return c.table.upper() if c.table else None
+
     for eq in select.find_all(exp.EQ):
-        if eq.find_ancestor(exp.Select) is not select:
+        if eq.find_ancestor(exp.Select) is not select or not _conjoint(eq):
             continue
-        for a, b in ((eq.left, eq.right), (eq.right, eq.left)):
+        l, r = eq.left, eq.right
+        if all(isinstance(x, exp.Column) and x.name.upper() == colonne for x in (l, r)):
+            if qual(l) and qual(r):
+                liens.append((qual(l), qual(r)))
+            continue
+        for a, b in ((l, r), (r, l)):
             if isinstance(a, exp.Column) and a.name.upper() == colonne and _valeur(b) == permise:
-                return True
+                filtrees |= {qual(a)} if qual(a) else set(occ)
     for dans in select.find_all(exp.In):
-        if dans.find_ancestor(exp.Select) is select and isinstance(dans.this, exp.Column) \
-                and dans.this.name.upper() == colonne \
-                and [_valeur(x) for x in dans.expressions] == [permise]:
-            return True
-    return False
+        if (dans.find_ancestor(exp.Select) is select and _conjoint(dans)
+                and isinstance(dans.this, exp.Column) and dans.this.name.upper() == colonne
+                and [_valeur(x) for x in dans.expressions] == [permise]):
+            filtrees |= {qual(dans.this)} if qual(dans.this) else set(occ)
+    change = True
+    while change:
+        change = False
+        for a, b in liens:
+            if (a in filtrees) != (b in filtrees):
+                filtrees |= {a, b}
+                change = True
+    return sorted({nom for alias, nom in occ.items() if alias not in filtrees})
 
 
 def hors_structure(sql: str, regle: str, partitionnees) -> List[str]:
@@ -122,8 +159,5 @@ def hors_structure(sql: str, regle: str, partitionnees) -> List[str]:
             raisons.append(f"ventilé par {colonne}")
             break
     for select in arbre.find_all(exp.Select):
-        lues = sorted({t.name.upper() for t in select.find_all(exp.Table)
-                       if t.find_ancestor(exp.Select) is select and t.name.upper() in tables_p})
-        if lues and not _filtre_permis(select, colonne, permise):
-            raisons += [f"{t} lue sans filtre sur {colonne}" for t in lues]
+        raisons += [f"{t} lue sans filtre sur {colonne}" for t in _non_filtrees(select, colonne, permise, tables_p)]
     return list(dict.fromkeys(raisons))

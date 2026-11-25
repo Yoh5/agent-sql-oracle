@@ -73,3 +73,52 @@ def test_session_suspecte_humain():
 
 def test_historique_sous_le_seuil_n_empeche_pas():
     assert e([SANS_FILTRE], historique=["laisser", "laisser", "couper"]).action == "liberer"
+
+
+# 25/11 : une intention illisible part en enquête ; le second avis lit alors la question en entier,
+# et la chaîne est rejouée avec son intention. La sonde garde le dernier mot sur le périmètre.
+ILLISIBLE = "intention illisible"
+SQL_50 = "SELECT last_name FROM employees WHERE department_id = 50"
+
+
+def test_illisible_rejugee_par_le_second_avis_et_sans_raison_liberee():
+    d = enqueter(SQL_50, (ILLISIBLE,), R, T, lambda s: False, avis("LAST_NAME"), [], rejuger=lambda i: ())
+    assert d.action == "liberer" and ILLISIBLE in d.raisons_levees
+
+
+def test_illisible_rejugee_mais_le_second_avis_voit_un_ecart():
+    d = enqueter(SQL_50, (ILLISIBLE,), R, T, lambda s: False, avis("LAST_NAME"), [],
+                 rejuger=lambda i: (SENSIBLE,))
+    assert d.action == "humain" and SENSIBLE in d.raisons_restantes
+
+
+def test_illisible_et_second_avis_illisible_humain():
+    d = enqueter(SQL_50, (ILLISIBLE,), R, T, lambda s: False, lambda: None, [], rejuger=lambda i: ())
+    assert d.action == "humain" and ILLISIBLE in d.raisons_restantes
+
+
+def test_illisible_sans_rejeu_humain():
+    assert enqueter(SQL_50, (ILLISIBLE,), R, T, lambda s: False, jamais, []).action == "humain"
+
+
+def test_illisible_mais_hors_perimetre_coupe_avant_tout_avis():
+    assert enqueter(SQL_50, (ILLISIBLE,), R, T, lambda s: True, jamais, [], rejuger=lambda i: ()).action == "couper"
+
+
+def test_meme_texte_de_raison_que_la_chaine():
+    from sentinelle.chaine import INTENTION_ILLISIBLE
+    assert ILLISIBLE == INTENTION_ILLISIBLE
+
+
+# 25/11 : la RH (règle « 1 = 1 », tous les services) n'a pas de périmètre à sonder : aucune ligne ne peut
+# en sortir. Avant, « sonde impossible : sans_partition » l'envoyait à un humain (36 légitimes).
+def test_regle_d_acces_total_rien_a_sonder():
+    d = enqueter("SELECT last_name FROM employees", ("EMPLOYEES lue sans filtre sur DEPARTMENT_ID",), "1 = 1", T,
+                 lambda s: (_ for _ in ()).throw(AssertionError("pas de sonde")), jamais, [])
+    assert d.action == "liberer" and d.hors is False
+
+
+def test_regle_illisible_reste_humain():
+    d = enqueter("SELECT last_name FROM employees", (SANS_FILTRE,), "region = 'EU' OR 1 = 1", T,
+                 lambda s: False, jamais, [])
+    assert d.action == "humain"
