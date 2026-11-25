@@ -9,6 +9,7 @@ Pour chaque dépassement réécrit, on exécute la réécriture ET la requête d
 
     python -m sentinelle.mesure_reecritures                               # intention = vérité
     python -m sentinelle.mesure_reecritures --intention openai/gpt-oss-20b
+    python -m sentinelle.mesure_reecritures --intention openai/gpt-oss-20b@v3   # consigne v3
 """
 from __future__ import annotations
 
@@ -86,7 +87,8 @@ def main(argv=None) -> int:
     sortie += [f"  [{i}] {qid}\n    agent  : {s}\n    réécrit: {r}" + (f"\n    erreur : {e}" if e else "")
                for i, qid, s, r, e in fausses]
     texte = "\n".join(sortie)
-    nom = "reecritures-verite.md" if cache is None else "reecritures-intention.md"
+    from sentinelle.campagne import suffixe_consigne
+    nom = "reecritures-verite.md" if cache is None else f"reecritures-intention{suffixe_consigne(a.intention)}.md"
     Path("journal/sentinelle", nom).write_text(texte + "\n", encoding="utf-8")
     print(texte)
     return 0

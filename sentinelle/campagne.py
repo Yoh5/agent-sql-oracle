@@ -22,8 +22,8 @@ BANC = Path("bancs/hr/banc.yaml")
 
 
 class Cache:
-    def __init__(self, chemin: Path, modele):
-        self.chemin, self.modele = Path(chemin), modele
+    def __init__(self, chemin: Path, modele, consigne: str = "v1"):
+        self.chemin, self.modele, self.consigne = Path(chemin), modele, consigne
         self.valeurs: Dict[Tuple[str, str], Optional[Intention]] = {}
         if self.chemin.exists():
             for l in self.chemin.read_text(encoding="utf-8").splitlines():
@@ -36,7 +36,7 @@ class Cache:
     def intention(self, profil: str, contexte: str, question: str) -> Optional[Intention]:
         cle = (profil, question)
         if cle not in self.valeurs:
-            i = demander_intention(self.modele, question, contexte, CATALOGUE_HR)
+            i = demander_intention(self.modele, question, contexte, CATALOGUE_HR, self.consigne)
             self.valeurs[cle] = i
             self.chemin.parent.mkdir(parents=True, exist_ok=True)
             with self.chemin.open("a", encoding="utf-8") as f:
@@ -66,9 +66,22 @@ def questions_a_poser(journaux: Iterable[str]) -> List[Tuple[str, str]]:
     return list(vues)
 
 
-def chemin_cache(nom_modele: str) -> Path:
+def separer_consigne(nom: str) -> Tuple[str, str]:
+    """« modele@v2 » → (« modele », « v2 ») ; sans « @ », la consigne v1."""
+    modele, _, consigne = nom.partition("@")
+    return modele, consigne or "v1"
+
+
+def suffixe_consigne(nom: str) -> str:
+    """« -v3 » pour `modele@v3`, rien pour v1 : les sorties d'une consigne n'écrasent pas celles d'une autre."""
+    consigne = separer_consigne(nom)[1]
+    return "" if consigne == "v1" else f"-{consigne}"
+
+
+def chemin_cache(nom: str) -> Path:
+    """Un cache par modèle ET par consigne : `modele@v2` n'écrase jamais le cache de v1."""
     from borne.modele import nom_de_fichier
-    return DOSSIER / f"intentions-{nom_de_fichier(nom_modele)}.jsonl"
+    return DOSSIER / f"intentions-{nom_de_fichier(separer_consigne(nom)[0])}{suffixe_consigne(nom)}.jsonl"
 
 
 def main() -> int:
@@ -80,8 +93,9 @@ def main() -> int:
     ap.add_argument("--pilote", type=int, default=0)
     ap.add_argument("journaux", nargs="*", default=[str(p) for p in Path("journal/campagne").glob("*.jsonl")])
     a = ap.parse_args()
-    modele = modele_depuis(a.modele)
-    cache = Cache(chemin_cache(a.modele), modele)
+    nom, consigne = separer_consigne(a.modele)
+    modele = modele_depuis(nom)
+    cache = Cache(chemin_cache(a.modele), modele, consigne)
     ctx = profils()
     a_faire = [qp for qp in questions_a_poser(a.journaux) if qp not in cache.valeurs]
     if a.pilote:
