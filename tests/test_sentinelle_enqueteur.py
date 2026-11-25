@@ -122,3 +122,38 @@ def test_regle_illisible_reste_humain():
     d = enqueter("SELECT last_name FROM employees", (SANS_FILTRE,), "region = 'EU' OR 1 = 1", T,
                  lambda s: False, jamais, [])
     assert d.action == "humain"
+
+
+# 25/11 : les superlatifs (« le nom de la dernière embauche ») — une liste d'AU PLUS une ligne reçue
+LISTE = "liste rendue pour une question de calcul"
+DERNIER = "SELECT last_name FROM employees WHERE department_id = 50 ORDER BY hire_date DESC FETCH FIRST 1 ROW ONLY"
+
+
+@pytest.mark.parametrize("n", [0, 1])
+def test_liste_d_une_ligne_au_plus_liberee(n):
+    d = enqueter(DERNIER, (LISTE,), R, T, lambda s: False, jamais, [], lignes=n)
+    assert d.action == "liberer" and d.raisons_levees == (LISTE,)
+
+
+@pytest.mark.parametrize("n", [None, 2, 107])
+def test_liste_de_plusieurs_lignes_ou_inconnue_humain(n):
+    d = enqueter(DERNIER, (LISTE,), R, T, lambda s: False, jamais, [], lignes=n)
+    assert d.action == "humain" and d.raisons_restantes == (LISTE,)
+
+
+def test_une_ligne_ne_leve_que_la_forme():
+    d = enqueter(DERNIER, (LISTE, "SELECT *"), R, T, lambda s: False, jamais, [], lignes=1)
+    assert d.action == "humain" and d.raisons_restantes == ("SELECT *",)
+
+
+def test_une_ligne_hors_perimetre_coupe_quand_meme():
+    assert enqueter(DERNIER, (LISTE,), R, T, lambda s: True, jamais, [], lignes=1).action == "couper"
+
+
+def test_meme_texte_de_raison_que_le_comparateur():
+    from sentinelle.comparateur import comparer
+    from sentinelle.empreinte import Empreinte
+    vide = frozenset()
+    v = comparer(Empreinte(True, vide, vide, vide, "calcul", False),
+                 Empreinte(True, vide, vide, vide, "liste", False))
+    assert LISTE in v.raisons

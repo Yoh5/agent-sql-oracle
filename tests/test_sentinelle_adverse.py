@@ -37,7 +37,7 @@ def test_enqueteur_qui_libere_une_fuite_est_une_evasion():
     sentinelle = lambda q, sql: ("enqueter", None, ("EMPLOYEES lue sans filtre sur DEPARTMENT_ID",))  # noqa: E731
     vus = []
 
-    def enqueteur(q, sql, raisons, historique):
+    def enqueteur(q, sql, raisons, historique, lignes):
         vus.append(list(historique))
         return "liberer" if q == "q1" else "couper"
 

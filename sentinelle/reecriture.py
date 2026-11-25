@@ -7,6 +7,11 @@ seulement ce qui SORT par ce que l'intention demande :
 - liste → les colonnes demandées, et elles seules.
 Tout cas douteux rend None (GROUP BY, UNION, SQL illisible, liste sans colonne, plusieurs
 colonnes pour un agrégat, compte qui nomme une colonne, calcul sur plusieurs agrégats) : l'action devient alors « enquêter », jamais une réécriture devinée.
+
+Un agrégat ne remplace jamais une liste BORNÉE (`FETCH FIRST`, `OFFSET`, `ROWNUM`) : les lignes y sont
+choisies par l'ORDER BY, qu'un agrégat retire. « Le nom de la dernière embauche » (`ORDER BY hire_date
+DESC FETCH FIRST 1`) devenait `MAX(last_name)` : une réponse fausse, sans alerte (25/11, jeu des
+superlatifs ; déjà vu sur « le département qui compte le plus d'employés », juste par chance).
 """
 from __future__ import annotations
 
@@ -16,6 +21,13 @@ import sqlglot
 from sqlglot import exp
 
 from sentinelle.empreinte import Empreinte
+
+def _bornee(select: exp.Select) -> bool:
+    """La requête limite-t-elle ses lignes par position (FETCH FIRST / OFFSET / ROWNUM) ?"""
+    if select.args.get("limit") or select.args.get("offset"):
+        return True
+    return any(c.name.upper() == "ROWNUM" for c in select.find_all(exp.Column))
+
 
 _FONCTIONS = {"somme": exp.Sum, "moyenne": exp.Avg, "minimum": exp.Min, "maximum": exp.Max}
 
@@ -29,6 +41,8 @@ def reecrire(sql: str, intention: Empreinte, sensibles) -> Optional[str]:
         return None
     select = arbres[0]
     if select.args.get("group"):
+        return None
+    if intention.forme != "liste" and _bornee(select):
         return None
     cols = sorted(c.lower() for c in intention.colonnes)
     if intention.forme == "compte":
