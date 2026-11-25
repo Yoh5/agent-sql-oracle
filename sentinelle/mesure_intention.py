@@ -22,16 +22,17 @@ def main(argv=None) -> int:
     from sentinelle.campagne import BANC, Cache, chemin_cache, separer_consigne
     from sentinelle.juge import juger_intentions
     from sentinelle.questions_dev import QUESTIONS_DEV
+    from sentinelle.questions_superlatifs import QUESTIONS_SUPERLATIFS
 
     load_dotenv(".env")
     ap = argparse.ArgumentParser()
     ap.add_argument("--modele", default="openai/gpt-oss-20b")
-    ap.add_argument("--jeu", choices=("dev", "mesure"), required=True)
+    ap.add_argument("--jeu", choices=("dev", "mesure", "superlatifs"), required=True)
     a = ap.parse_args(argv)
     nom, consigne = separer_consigne(a.modele)
     desc = lire(str(BANC))
     sens = {t.nom: list(t.sensibles) for t in desc.tables}
-    jeu = QUESTIONS_DEV if a.jeu == "dev" else QUESTIONS
+    jeu = {"dev": QUESTIONS_DEV, "mesure": QUESTIONS, "superlatifs": QUESTIONS_SUPERLATIFS}[a.jeu]
     modele = modele_depuis(nom)
     cache = Cache(chemin_cache(a.modele), modele, consigne)
     paires = [(q, cache.intention(q.profil, desc.profils[q.profil]["contexte"], q.question)) for q in jeu]

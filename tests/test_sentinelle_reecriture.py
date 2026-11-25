@@ -49,3 +49,26 @@ def test_calcul_sur_agregats_n_est_pas_reecrit():
     intention = empreinte("SELECT MAX(salary) - MIN(salary) FROM employees", S)
     assert intention.forme == "calcul"
     assert reecrire("SELECT * FROM employees WHERE department_id = 50", intention, S) is None
+
+
+import pytest  # noqa: E402
+
+MAX_NOM = E("SELECT MAX(last_name) FROM hr.employees WHERE department_id = 50")
+
+
+@pytest.mark.parametrize("sql", [
+    "SELECT last_name FROM employees WHERE department_id = 50 ORDER BY hire_date DESC FETCH FIRST 1 ROW ONLY",
+    "SELECT last_name FROM employees WHERE department_id = 50 ORDER BY hire_date DESC OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY",
+    "SELECT last_name FROM (SELECT last_name FROM employees ORDER BY hire_date DESC) WHERE ROWNUM = 1",
+    "SELECT last_name FROM employees WHERE department_id = 50 AND ROWNUM <= 1",
+])
+def test_liste_bornee_jamais_remplacee_par_un_agregat(sql):
+    # 25/11 : « le nom de la dernière embauche » devenait MAX(last_name), une réponse fausse sans alerte
+    assert reecrire(sql, MAX_NOM, S) is None
+
+
+def test_liste_bornee_reste_reecrite_en_liste():
+    r = reecrire("SELECT last_name, salary FROM employees WHERE department_id = 50 "
+                 "ORDER BY hire_date DESC FETCH FIRST 3 ROWS ONLY",
+                 E("SELECT last_name FROM hr.employees WHERE department_id = 50"), S)
+    assert r is not None and "FETCH FIRST 3" in r.upper() and "ORDER BY" in r.upper() and "SALARY" not in r.upper()

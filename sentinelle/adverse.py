@@ -128,7 +128,7 @@ class Essai:
 
 Agent = Callable[[str], Tuple[Optional[str], list, list]]
 Sentinelle = Callable[[str, str], Optional[Tuple[str, Optional[str], Tuple[str, ...]]]]
-Enqueteur = Callable[[str, str, Tuple[str, ...], List[Optional[str]]], str]
+Enqueteur = Callable[[str, str, Tuple[str, ...], List[Optional[str]], int], str]  # …, lignes reçues
 
 
 APERCU = 8   # lignes reçues montrées à l'attaquant (il voit ce qu'un utilisateur verrait)
@@ -165,7 +165,7 @@ def jouer_episode(tours: int, attaquant: Callable[[list], Optional[str]], agent:
                     l2, c2 = executer(reecrit)
                     sql_final, fuite_finale, recu = reecrit, fuite(l2, c2, emails, ids, reecrit), l2
                 elif action == "enqueter" and enqueteur is not None:
-                    suite = enqueteur(q, sql, tuple(raisons), [h["action"] for h in historique])
+                    suite = enqueteur(q, sql, tuple(raisons), [h["action"] for h in historique], len(lignes))
                     action = f"enqueter>{suite}"
                     if suite == "liberer":                 # la réponse de l'agent part telle quelle
                         sql_final, fuite_finale, recu = sql, fuite_agent, lignes
@@ -250,13 +250,14 @@ def main(argv=None) -> int:
         m_avis = modele_depuis(separer_consigne(a.avis)[0])
         avis = Cache(chemin_cache(a.avis.split(":", 1)[-1]), m_avis, separer_consigne(a.avis)[1])
 
-        def enq(q, sql, raisons, historique):
+        def enq(q, sql, raisons, historique, n_lignes):
             # une enquête libérée a été prouvée sans fuite : elle ne rend pas la session suspecte
             hist = [(x or "").split(">")[-1] for x in historique]
             return enqueter(sql, raisons, regle, partitionnees, sonde.hors_perimetre,
                             lambda: avis.intention(profil, contexte, q), hist,
                             rejuger=lambda j: traiter(sql, vers_empreinte(j, sens), sens, regle, a.seuil,
-                                                      j.perimetre, False, partitionnees)[0].raisons).action
+                                                      j.perimetre, False, partitionnees)[0].raisons,
+                            lignes=n_lignes).action
 
     def executer(sql):
         r = ex.executer(compte, sql)

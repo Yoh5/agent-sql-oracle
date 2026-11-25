@@ -41,6 +41,7 @@ def main(argv=None) -> int:
     from sentinelle.chaine import traiter
     from sentinelle.enqueteur import enqueter
     from sentinelle.intention import vers_empreinte
+    from sentinelle.questions_superlatifs import QUESTIONS_SUPERLATIFS
     from sentinelle.sonde import Sonde
 
     load_dotenv(".env")
@@ -49,6 +50,7 @@ def main(argv=None) -> int:
     ap.add_argument("--avis", default="openrouter:mistralai/mistral-small-3.2-24b-instruct")
     ap.add_argument("--seuil", type=int, default=4)
     ap.add_argument("--pilote", type=int, default=0, help="n'enquêter que sur N cas (coût mesuré d'abord)")
+    ap.add_argument("--sortie", default="journal/sentinelle/enquete.md")
     ap.add_argument("journaux", nargs="+")
     a = ap.parse_args(argv)
 
@@ -64,43 +66,58 @@ def main(argv=None) -> int:
     ex = ExecuteurOracle(dsn, {c: mdp for c in ("MGR_50", "MGR_80", "RH_DIR", "HR_BAC")},
                          lire_audit=v.derniere_entree_audit)
     sans_barriere = Barrieres.depuis_code("C0V0P1")
-    vrai = {q.id: q for q in QUESTIONS}
+    vrai = {q.id: q for q in [*QUESTIONS, *QUESTIONS_SUPERLATIFS]}   # ids « sup:… » : jeu neuf du 25/11
 
-    cas = []  # (genre, profil, question, sql)
+    cas = []  # (genre, profil, question, sql, barrières sous lesquelles l'agent a tourné)
     for chemin in a.journaux:
         for l in Path(chemin).read_text(encoding="utf-8").splitlines():
             d = json.loads(l) if l.strip() else {}
             if d.get("type") == "utilite" and d.get("sql") and d.get("id") in vrai:
                 q = vrai[d["id"]]
-                cas.append(("legitime", q.profil, q.question, d["sql"]))
+                cas.append(("legitime", q.profil, q.question, d["sql"], d.get("barrieres")))
             elif d.get("type") == "attaque" and d.get("sql"):
-                cas.append((f"attaque:{d.get('issue', '?')}", d["profil"], d["question"], d["sql"]))
-    cas += [("correle", "manager_50", q, s) for q, s in CORRELES]
+                cas.append((f"attaque:{d.get('issue', '?')}", d["profil"], d["question"], d["sql"],
+                            d.get("barrieres")))
+    if not any("superlatifs" in c for c in a.journaux):
+        cas += [("correle", "manager_50", q, s, "C0V0P1") for q, s in CORRELES]
+
+    # Les lignes que l'agent a reçues (25/11, levier « liste d'une ligne au plus ») : la requête rejouée
+    # avec le compte et les barrières du journal, VPD ACTIVE — avant de la couper pour l'arbitre.
+    def recues(profil, sql, barrieres):
+        try:
+            r = ex.executer(compte_pour(PROFILS[profil], Barrieres.depuis_code(barrieres or "C0V0P1")), sql)
+        except Exception:  # noqa: BLE001
+            return None
+        return None if r.ora else len(r.lignes)
+
+    a_enqueter = []
+    for genre, profil, question, sql, barrieres in cas:
+        i = intentions.get((profil, question))
+        regle = desc.regle.get(profil)
+        if not regle:
+            continue
+        acces = bool(desc.profils[profil].get("acces_total"))
+        # une intention illisible part aussi en enquête (25/11) : elle est mesurée, pas écartée
+        verdict, decision = traiter(sql, None if i is None else vers_empreinte(i, sens), sens, regle, a.seuil,
+                                    None if i is None else i.perimetre, acces, T)
+        if decision.action != "enqueter":
+            continue
+        if a.pilote and len(a_enqueter) >= a.pilote:
+            break
+        a_enqueter.append((genre, profil, question, sql, regle, acces, verdict, recues(profil, sql, barrieres)))
 
     resultats = defaultdict(Counter)
     restes = Counter()
-    fautes, n = [], 0
+    fautes = []
     v.vpd(False)
     try:
-        for genre, profil, question, sql in cas:
-            i = intentions.get((profil, question))
-            regle = desc.regle.get(profil)
-            if not regle:
-                continue
-            acces = bool(desc.profils[profil].get("acces_total"))
-            # une intention illisible part aussi en enquête (25/11) : elle est mesurée, pas écartée
-            verdict, decision = traiter(sql, None if i is None else vers_empreinte(i, sens), sens, regle, a.seuil,
-                                        None if i is None else i.perimetre, acces, T)
-            if decision.action != "enqueter":
-                continue
-            if a.pilote and n >= a.pilote:
-                break
-            n += 1
+        for genre, profil, question, sql, regle, acces, verdict, n_lignes in a_enqueter:
             ctx = desc.profils[profil]["contexte"]
             d = enqueter(sql, verdict.raisons, regle, T, sonde.hors_perimetre,
                          lambda: avis.intention(profil, ctx, question), [],
                          rejuger=lambda j: traiter(sql, vers_empreinte(j, sens), sens, regle, a.seuil,
-                                                   j.perimetre, acces, T)[0].raisons)
+                                                   j.perimetre, acces, T)[0].raisons,
+                         lignes=n_lignes)
             famille = genre.split(":")[0]
             resultats[genre][d.action] += 1
             if famille == "legitime" and d.action == "humain":
@@ -127,7 +144,7 @@ def main(argv=None) -> int:
                   f"{m_avis.jetons_sortie} sortie")
     texte = "\n".join(sortie)
     if not a.pilote:
-        Path("journal/sentinelle/enquete.md").write_text(texte + "\n", encoding="utf-8")
+        Path(a.sortie).write_text(texte + "\n", encoding="utf-8")
     print(texte)
     return 0
 

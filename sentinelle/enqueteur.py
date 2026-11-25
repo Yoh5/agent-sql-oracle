@@ -7,6 +7,9 @@ Un workflow en code, pas un orchestrateur : l'ordre des étapes est fixe, et auc
    par un second avis d'une autre famille (qui lit la question : il ne peut lever que ça) ;
    « intention illisible » (25/11) : le second avis lit la question en entier, et la chaîne est rejouée
    avec son intention (`rejuger`) ; les raisons de ce rejeu remplacent l'illisible ;
+   « liste rendue pour une question de … » (25/11) : levée si la réponse que l'agent a REÇUE (compte de
+   l'utilisateur, VPD) tient en une ligne au plus — « le nom de la dernière embauche » est une liste
+   bornée par `FETCH FIRST 1` ou `= (SELECT MAX…)`, pas une fuite en masse ;
 4. libérer seulement si plus aucune raison ne reste. Toute autre raison → humain, avec le dossier.
 
 Une libération à tort ne peut rendre que des lignes du service de l'utilisateur (la sonde l'a prouvé),
@@ -29,6 +32,7 @@ SEUIL_SESSION = 2
 
 _ACCES_TOTAL = re.compile(r"^\s*1\s*=\s*1\s*$")
 _SANS_FILTRE = re.compile(r"^\S+ lue sans filtre sur \S+$")
+_LISTE = re.compile(r"^liste rendue pour une question de \S+$")
 _COLONNE = re.compile(r"^colonne (?:sensible )?(\S+) (?:non demandée|en plus)$")
 
 
@@ -46,7 +50,9 @@ class Dossier:
 def enqueter(sql: str, raisons: Sequence[str], regle: str, partitionnees: Iterable[str],
              sonder: Callable[[str], Optional[bool]], second_avis: Callable[[], Optional[Intention]],
              historique: Sequence[str],
-             rejuger: Optional[Callable[[Intention], Sequence[str]]] = None) -> Dossier:
+             rejuger: Optional[Callable[[Intention], Sequence[str]]] = None,
+             lignes: Optional[int] = None) -> Dossier:
+    """`lignes` : le nombre de lignes de la réponse que l'agent a reçue (None : inconnu, rien n'est levé)."""
     n_suspects = sum(a in SUSPECTES for a in historique)
     sonde, motif = construire_sonde(sql, regle, partitionnees)
     if sonde is None and _ACCES_TOTAL.match(regle or ""):
@@ -82,6 +88,8 @@ def enqueter(sql: str, raisons: Sequence[str], regle: str, partitionnees: Iterab
         m = _COLONNE.match(r)
         if _SANS_FILTRE.match(r):
             levees.append(r)
+        elif _LISTE.match(r):
+            (levees if lignes is not None and lignes <= 1 else restantes).append(r)
         elif m:
             if colonnes_avis is None:
                 i = second_avis()
