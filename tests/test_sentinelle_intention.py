@@ -45,3 +45,14 @@ def test_le_modele_ne_voit_pas_de_sql():
 def test_vers_empreinte():
     e = vers_empreinte(Intention(frozenset({"SALARY", "LAST_NAME"}), "liste", "mon_service"), {"SALARY"})
     assert e.tables == set() and e.sensibles == {"SALARY"} and e.forme == "liste"
+
+
+def test_la_consigne_v1_est_celle_d_avant():
+    from sentinelle.intention import CONSIGNES, _CONSIGNE
+    assert CONSIGNES["v1"] is _CONSIGNE
+
+
+def test_une_consigne_v2_accepte_la_forme_calcul():
+    f = _Faux('{"colonnes": ["SALARY"], "forme": "calcul", "perimetre": "mon_service"}')
+    assert demander_intention(f, "Écart ?", "manager", CATALOGUE_HR, consigne="v2").forme == "calcul"
+    assert demander_intention(f, "Écart ?", "manager", CATALOGUE_HR) is None   # v1 ne la connaît pas

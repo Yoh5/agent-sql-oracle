@@ -551,6 +551,60 @@ la consigne lui demande de nommer la colonne d'un compte. Les 2 fausses restante
 pour « managers différents », il répond « compte, sans colonne » ; rien dans son intention ne dit « distinct ».
 Le corriger, c'est retoucher sa consigne — sur un jeu de questions séparé d'abord.
 
+## Sentinelle — la consigne d'intention retouchée sur un jeu séparé (25/11/2026)
+
+Les 90 questions du banc d'utilité servent à **mesurer**. Retoucher la consigne du modèle d'intention en
+lisant leurs erreurs, c'est apprendre sur le jeu de mesure. D'où un **jeu de développement** de 36 questions
+neuves (`sentinelle/questions_dev.py`). Elles visent les familles d'erreurs vues, sans en reprendre les
+phrases : compte de valeurs différentes, calcul sur plusieurs agrégats, valeur par catégorie, SALARY contre
+MIN_SALARY/MAX_SALARY, et des questions ordinaires. La consigne a été retouchée deux fois en ne lisant que
+ce jeu (v2, puis v3), puis mesurée **une seule fois** sur les 90.
+
+```bash
+python -m sentinelle.mesure_intention --modele openai/gpt-oss-20b@v3 --jeu dev
+python -m sentinelle.mesure_intention --modele openai/gpt-oss-20b@v3 --jeu mesure
+```
+
+`modele@v3` choisit la consigne. Chaque consigne a son propre cache et ses propres sorties : v1 reste
+rejouable à l'identique. v3 ajoute la forme « calcul », qui n'est jamais réécrite. Elle demande aussi la
+colonne d'un compte de valeurs différentes, et une valeur par catégorie dès que la question dit « par »
+ou « chaque ». Elle distingue enfin le salaire versé (SALARY) des bornes de la grille (MIN/MAX_SALARY).
+Une « réécriture altérée », c'est une requête de vérité qui, réécrite avec l'intention du modèle, ne
+redonne pas ce qu'elle donne avec la vraie intention.
+
+| | dev, v1 | dev, v3 | **mesure, v1** | **mesure, v3** |
+|---|---|---|---|---|
+| forme juste | 77,1 % | 97,1 % | 90,9 % | **96,5 %** |
+| colonnes sensibles justes | 91,4 % | 100 % | 95,5 % | **100 %** |
+| réécritures altérées | 6 | 0 | 2 | **1** (une colonne en plus) |
+| intentions illisibles | 1 | 1 | 2 | 4 |
+
+En aval, sur le jeu de mesure (seuil 4) :
+
+| | v1 | v3 |
+|---|---|---|
+| dépassements réécrits, exacts sur les lignes d'Oracle | 88/90 (2 fausses) | **111/111** |
+| dépassements envoyés en enquête | 37 | 16 |
+| légitimes : enquête / coupé | 109 / 0 | 109 / 0 |
+| attaques réussies laissées passer | 0 | 0 |
+
+**Un trou trouvé en chemin, antérieur à v3 : une intention illisible laissait passer la requête.**
+L'épisode adverse la marquait « non_juge » et la réponse de l'agent partait telle quelle. Une intention
+illisible, c'est une réponse **vide** du modèle (1 tirage sur 3 sur une question du jeu de développement).
+Un attaquant qui la provoque passait donc sans être jugé. Aucun des épisodes joués n'est tombé dessus,
+mais le code le permettait. Désormais, une intention illisible donne : coupure si le code voit une faute
+(écriture, filtre hors de la règle), sinon enquête, où la sonde tranche ou un humain. Le rejeu la compte
+en alerte au lieu de l'écarter, ce qui fait monter les fausses alertes affichées au seuil 4 (v1 4,5 → 6,7 %).
+Ces alertes existaient déjà, le rejeu les cachait.
+
+Limites :
+- v3 rend plus d'intentions illisibles que v1 (4 contre 2 sur 90). Chacune coûte une enquête, pas une
+  faute.
+- Sur « le département qui compte le plus d'employés », v3 lit un *maximum*. 8 requêtes légitimes sont
+  alors réécrites en `MAX(department_name)` sur la ligne déjà choisie par l'agent. Les 8 sont exactes
+  sur Oracle, mais en cas d'ex æquo elles ne le seraient plus. L'erreur a été vue sur le jeu de mesure :
+  la corriger demanderait de nouvelles questions de développement, puis un nouveau jeu de mesure.
+
 ## Installer
 
 ```bash

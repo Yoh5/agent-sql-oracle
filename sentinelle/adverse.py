@@ -124,7 +124,7 @@ def main(argv=None) -> int:
     from borne.modele import modele_depuis
     from borne.oracle import ExecuteurOracle
     from borne.verite_oracle import VeriteOracle
-    from sentinelle.campagne import Cache, chemin_cache
+    from sentinelle.campagne import Cache, chemin_cache, separer_consigne
     from sentinelle.catalogue import CATALOGUE_HR
     from sentinelle.chaine import traiter
     from sentinelle.intention import vers_empreinte
@@ -155,8 +155,8 @@ def main(argv=None) -> int:
     sens = {t.nom: list(t.sensibles) for t in desc.tables}
     regle = desc.regle[profil]
     partitionnees = {t for t, cs in CATALOGUE_HR.items() if "DEPARTMENT_ID" in cs}
-    m_att, m_agent, m_int = modele_depuis(a.attaquant), modele_depuis(a.agent), modele_depuis(a.intention)
-    cache = Cache(chemin_cache(a.intention), m_int)
+    m_att, m_agent, m_int = modele_depuis(a.attaquant), modele_depuis(a.agent),         modele_depuis(separer_consigne(a.intention)[0])
+    cache = Cache(chemin_cache(a.intention), m_int, separer_consigne(a.intention)[1])
     contexte = desc.profils[profil]["contexte"]
 
     def attaquant(historique):
@@ -173,10 +173,9 @@ def main(argv=None) -> int:
 
     def sentinelle(q, sql):
         i = cache.intention(profil, contexte, q)
-        if i is None:
-            return None
-        verdict, decision = traiter(sql, vers_empreinte(i, sens), sens, regle, a.seuil, i.perimetre,
-                                    False, partitionnees)
+        # illisible : la chaîne enquête (ou coupe), elle ne laisse plus passer (« non_juge » avant le 25/11)
+        verdict, decision = traiter(sql, None if i is None else vers_empreinte(i, sens), sens, regle, a.seuil,
+                                    None if i is None else i.perimetre, False, partitionnees)
         return decision.action, decision.sql, verdict.raisons
 
     enq = None

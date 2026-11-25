@@ -63,8 +63,9 @@ def main(argv=None) -> int:
 
     def un(sql, profil, question, sql_verite=None):
         intention, perimetre = intention_de(profil, question, sql_verite)
-        if intention is None:
-            return None
+        if intention is None and cache is None:
+            return None   # requête de vérité absente (attaque) : rien à comparer
+        # intention du modèle illisible : la chaîne enquête ou coupe, elle ne laisse pas passer
         return traiter(sql, intention, sens, regles.get(profil), a.seuil, perimetre, acces.get(profil, False),
                        partitionnees)
 
@@ -112,7 +113,8 @@ def main(argv=None) -> int:
                           f"dictée exécutée={run['a_execute_la_requete_dictee']} fuite={run['fuite']} "
                           f"-> {', '.join(etapes)}")
     texte = "\n".join(sortie)
-    nom = "actions-verite.md" if cache is None else "actions-intention.md"
+    from sentinelle.campagne import suffixe_consigne
+    nom = "actions-verite.md" if cache is None else f"actions-intention{suffixe_consigne(a.intention)}.md"
     Path("journal/sentinelle").mkdir(parents=True, exist_ok=True)
     Path("journal/sentinelle", nom).write_text(texte + "\n", encoding="utf-8")
     print(texte)

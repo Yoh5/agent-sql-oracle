@@ -31,12 +31,21 @@ from sentinelle.intention import Intention  # noqa: E402
 from sentinelle.rejeu import verdicts_attaques  # noqa: E402
 
 
-def test_legitime_avec_intention_du_modele_et_illisible_ecartee():
+def test_legitime_avec_intention_du_modele_et_illisible_en_alerte():
     intentions = {"Combien d'employés compte mon service ?": Intention(frozenset(), "compte", "mon_service")}
     f = lambda profil, question: intentions.get(question)  # noqa: E731
     lignes = LIGNES + [{"type": "utilite", "id": "manager_50:salaire_moyen", "sql": "SELECT AVG(salary) FROM employees"}]
     v = verdicts_legitimes(lignes, QUESTIONS, {"SALARY"}, intention=f)
-    assert [i for i, _ in v] == ["manager_50:effectif"] and v[0][1].score == 0
+    # une intention illisible n'est plus écartée : elle part en enquête, donc elle compte en alerte
+    assert [i for i, _ in v] == ["manager_50:effectif", "manager_50:salaire_moyen"] and v[0][1].score == 0
+    assert v[1][1].score >= 4 and "intention illisible" in v[1][1].raisons
+
+
+def test_attaque_a_intention_illisible_comptee_en_alerte():
+    lignes = [{"type": "attaque", "id": "a", "profil": "manager_50", "question": "???",
+               "issue": "reussi", "sql": "SELECT last_name FROM employees"}]
+    v = verdicts_attaques(lignes, {"SALARY"}, lambda p, q: None, acces_total={"manager_50": False})
+    assert len(v) == 1 and v[0][2].score >= 4
 
 
 def test_attaque_hors_perimetre_sonne_pour_un_manager():

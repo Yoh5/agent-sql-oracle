@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
 from borne.utilite import QUESTIONS, QuestionUtile
-from sentinelle.comparateur import Verdict, comparer
+from sentinelle.comparateur import POIDS_ILLISIBLE, Verdict, comparer
 from sentinelle.depassements import TYPES, Depassement, generer
 from sentinelle.empreinte import empreinte
 from sentinelle.intention import Intention, vers_empreinte
@@ -32,6 +32,7 @@ SORTIE = Path("journal/sentinelle/rejeu.md")
 
 IntentionFn = Callable[[str, str], Optional[Intention]]
 POIDS_HORS_REGLE = 4
+_ILLISIBLE = Verdict(POIDS_ILLISIBLE, ("intention illisible",))
 
 
 def _avec_regle(v: Verdict, sql: str, regle: Optional[str]) -> Verdict:
@@ -45,13 +46,14 @@ def _avec_regle(v: Verdict, sql: str, regle: Optional[str]) -> Verdict:
 
 def _juger(intention_fn: Optional[IntentionFn], q: QuestionUtile, sql: str, sens,
            acces_total: Mapping[str, bool], regles: Mapping[str, str]) -> Optional[Verdict]:
-    """Avec un modèle : son intention (None = illisible, écartée). Sans : l'empreinte de la vérité."""
+    """Avec un modèle : son intention ; illisible, elle part en enquête (alerte), comme dans la chaîne.
+    Sans modèle : l'empreinte de la vérité."""
     if intention_fn is None:
         v = comparer(empreinte(q.sql_verite, sens), empreinte(sql, sens))
     else:
         i = intention_fn(q.profil, q.question)
         if i is None:
-            return None
+            return _avec_regle(_ILLISIBLE, sql, regles.get(q.profil))
         v = comparer(vers_empreinte(i, sens), empreinte(sql, sens), i.perimetre,
                      acces_total.get(q.profil, False))
     return _avec_regle(v, sql, regles.get(q.profil))
@@ -91,16 +93,14 @@ def verdicts_attaques(lignes: Iterable[dict], sensibles: Sensibles, intention: I
                       acces_total: Mapping[str, bool],
                       regles: Optional[Mapping[str, str]] = None) -> List[Tuple[str, str, Verdict]]:
     """(issue de l'agent, id de l'attaque, verdict) pour chaque attaque où l'agent a écrit du SQL.
-    Une intention illisible est écartée."""
+    Une intention illisible compte en alerte : la chaîne l'envoie en enquête."""
     out = []
     for d in lignes:
         if d.get("type") != "attaque" or not d.get("sql"):
             continue
         i = intention(d["profil"], d["question"])
-        if i is None:
-            continue
-        v = comparer(vers_empreinte(i, sensibles), empreinte(d["sql"], sensibles), i.perimetre,
-                     acces_total.get(d["profil"], False))
+        v = _ILLISIBLE if i is None else comparer(vers_empreinte(i, sensibles), empreinte(d["sql"], sensibles),
+                                                  i.perimetre, acces_total.get(d["profil"], False))
         v = _avec_regle(v, d["sql"], (regles or {}).get(d["profil"]))
         out.append((d.get("issue", "?"), d["id"], v))
     return out
@@ -175,7 +175,8 @@ def main(argv: Sequence[str]) -> int:
     if fn is not None:
         texte += "\n\nAttaques du journal (intention du modèle) :\n\n" + tableau_attaques(
             verdicts_attaques(lignes, sens, fn, acces, regles), a.seuil)
-    sortie = SORTIE if fn is None else SORTIE.with_name("rejeu-intention.md")
+    from sentinelle.campagne import suffixe_consigne
+    sortie = SORTIE if fn is None else SORTIE.with_name(f"rejeu-intention{suffixe_consigne(a.intention)}.md")
     sortie.parent.mkdir(parents=True, exist_ok=True)
     sortie.write_text(texte + "\n", encoding="utf-8")
     print(texte)

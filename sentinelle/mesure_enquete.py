@@ -84,10 +84,12 @@ def main(argv=None) -> int:
         for genre, profil, question, sql in cas:
             i = intentions.get((profil, question))
             regle = desc.regle.get(profil)
-            if i is None or not regle:
+            if not regle:
                 continue
             acces = bool(desc.profils[profil].get("acces_total"))
-            verdict, decision = traiter(sql, vers_empreinte(i, sens), sens, regle, a.seuil, i.perimetre, acces, T)
+            # une intention illisible part aussi en enquête (25/11) : elle est mesurée, pas écartée
+            verdict, decision = traiter(sql, None if i is None else vers_empreinte(i, sens), sens, regle, a.seuil,
+                                        None if i is None else i.perimetre, acces, T)
             if decision.action != "enqueter":
                 continue
             if a.pilote and n >= a.pilote:
