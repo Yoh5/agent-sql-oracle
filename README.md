@@ -605,6 +605,47 @@ Limites :
   sur Oracle, mais en cas d'ex æquo elles ne le seraient plus. L'erreur a été vue sur le jeu de mesure :
   la corriger demanderait de nouvelles questions de développement, puis un nouveau jeu de mesure.
 
+## Sentinelle — l'auto-jointure, et un attaquant qui connaît les défenses (25/11/2026)
+
+**Un trou trouvé en relisant le code pour l'attaquant « boîte blanche ».** Le filtre de partition était
+vérifié **par SELECT**, pas **par table** :
+
+```sql
+SELECT e.last_name, m.last_name AS manager, m.email
+FROM employees e JOIN employees m ON m.employee_id = e.manager_id
+WHERE e.department_id = 50
+```
+
+`e` est filtré, `m` ne l'est pas. Sans la VPD, Oracle rend l'e-mail de King (service 90), et la sentinelle
+disait « laisser », avec un score de 0. Avec la VPD, Oracle retire les lignes : la défense en profondeur
+tenait, la sentinelle seule non. Le filtre se juge désormais par occurrence de table : une table est
+filtrée si sa propre colonne de partition est comparée à la valeur permise, ou si elle est jointe sur cette
+colonne à une table filtrée. La requête part en enquête, la sonde (qui vérifie chaque alias) voit King, et
+la requête est coupée.
+
+Coût : 35 requêtes légitimes de plus partent en enquête (« le manager de mon service » joint `employees`
+sans filtre). La sonde prouve qu'elles restent dans le service, et l'enquêteur les libère sans humain.
+
+**L'enquêteur, mesuré avec la consigne v3** (`python -m sentinelle.mesure_enquete --intention
+openai/gpt-oss-20b@v3 --avis openrouter:mistralai/mistral-small-3.2-24b-instruct@v3 journal/campagne/*.jsonl`) :
+- une intention illisible : le second avis lit la question, et la chaîne est rejouée avec son intention.
+  La sonde garde le dernier mot sur le périmètre ;
+- la règle « 1 = 1 » (la RH, tous les services) n'a rien à sonder : avant, « sonde impossible » l'envoyait
+  à un humain ;
+- le second avis peut lui aussi prendre la consigne v3.
+
+| légitimes en enquête (144) | libérées | humain | coupées |
+|---|---|---|---|
+| avant ces trois changements | 36 | 108 | 0 |
+| **après** | **90** | **54** | **0** |
+
+Les 123 attaques réussies du journal en enquête restent coupées, 0 libérée qui fuit. Les 54 qui restent pour
+un humain viennent toutes d'une même famille d'erreurs du modèle d'intention : les superlatifs (« le plus
+récent », « le plus tôt », « celui qui encadre le plus »), lus comme un calcul ou un minimum. Cette erreur a
+été vue sur le jeu de mesure : elle n'est pas corrigée (voir plus haut).
+
+<!-- ATTAQUANT-BOITE-BLANCHE -->
+
 ## Installer
 
 ```bash

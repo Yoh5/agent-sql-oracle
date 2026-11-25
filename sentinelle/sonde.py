@@ -16,7 +16,7 @@ from typing import Iterable, List, Optional, Tuple
 import sqlglot
 from sqlglot import exp
 
-from sentinelle.perimetre import _partition
+from sentinelle.perimetre import _non_filtrees, _partition
 
 # Fonctions SQL usuelles, par classe sqlglot (lecture oracle). Tout le reste (dont `exp.Anonymous`,
 # qui couvre les fonctions inconnues et les appels pointés `paquet.fonction`) est refusé.
@@ -105,6 +105,11 @@ def _sonde_select(a: exp.Select, part: Tuple[str, str], partitionnees: Iterable[
     if _fonction_refusee(a):
         return None, "fonction"
     parts = {p.upper() for p in partitionnees}
+    # Une sous-requête (liste SELECT, WHERE, HAVING…) qui lit une table partitionnée sans filtre sur le
+    # service : la sonde ne la couvre pas — elle ne sonde que les tables du FROM. Refus → humain.
+    # (25/11 : `(SELECT email FROM employees WHERE employee_id = 150)` dans la liste SELECT, libéré.)
+    if any(sous is not a and _non_filtrees(sous, colonne, valeur, parts) for sous in a.find_all(exp.Select)):
+        return None, "sous_requete"
     refs = [(t.alias_or_name) for t in tables if t.name.upper() in parts]
     if not refs:
         return None, "aucune_table_partitionnee"
