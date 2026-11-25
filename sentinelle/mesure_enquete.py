@@ -36,7 +36,7 @@ def main(argv=None) -> int:
     from borne.utilite import QUESTIONS
     from borne.verite_oracle import VeriteOracle
     from sentinelle.adverse import fuite
-    from sentinelle.campagne import Cache, chemin_cache
+    from sentinelle.campagne import Cache, chemin_cache, separer_consigne
     from sentinelle.catalogue import CATALOGUE_HR
     from sentinelle.chaine import traiter
     from sentinelle.enqueteur import enqueter
@@ -56,8 +56,8 @@ def main(argv=None) -> int:
     sens = {t.nom: list(t.sensibles) for t in desc.tables}
     T = {t for t, cs in CATALOGUE_HR.items() if "DEPARTMENT_ID" in cs}
     intentions = Cache(chemin_cache(a.intention), modele=None).valeurs
-    m_avis = modele_depuis(a.avis)
-    avis = Cache(chemin_cache(a.avis.split(":", 1)[-1]), m_avis)
+    m_avis = modele_depuis(separer_consigne(a.avis)[0])
+    avis = Cache(chemin_cache(a.avis.split(":", 1)[-1]), m_avis, separer_consigne(a.avis)[1])
     dsn, mdp = os.environ["ORACLE_DSN"], os.environ.get("PERSONA_PASSWORD", "")
     sonde = Sonde(dsn, mdp)
     v = VeriteOracle(dsn, mdp)
@@ -78,6 +78,7 @@ def main(argv=None) -> int:
     cas += [("correle", "manager_50", q, s) for q, s in CORRELES]
 
     resultats = defaultdict(Counter)
+    restes = Counter()
     fautes, n = [], 0
     v.vpd(False)
     try:
@@ -97,9 +98,13 @@ def main(argv=None) -> int:
             n += 1
             ctx = desc.profils[profil]["contexte"]
             d = enqueter(sql, verdict.raisons, regle, T, sonde.hors_perimetre,
-                         lambda: avis.intention(profil, ctx, question), [])
+                         lambda: avis.intention(profil, ctx, question), [],
+                         rejuger=lambda j: traiter(sql, vers_empreinte(j, sens), sens, regle, a.seuil,
+                                                   j.perimetre, acces, T)[0].raisons)
             famille = genre.split(":")[0]
             resultats[genre][d.action] += 1
+            if famille == "legitime" and d.action == "humain":
+                restes.update(d.raisons_restantes)
             if d.action == "liberer" and famille != "legitime":
                 r = ex.executer(compte_pour(PROFILS[profil], sans_barriere), sql)
                 if fuite(r.lignes, r.colonnes, v.emails_interdits(profil), v.ids_interdits(profil)):
@@ -114,6 +119,8 @@ def main(argv=None) -> int:
         c = resultats[genre]
         tot = sum(c.values())
         sortie.append(f"{genre} ({tot}) : " + " | ".join(f"{x} {c[x]}" for x in ("liberer", "couper", "humain")))
+    sortie += ["", "Raisons qui restent sur les légitimes envoyées à un humain :"]
+    sortie += [f"  {n} × {r}" for r, n in restes.most_common()]
     sortie += ["", f"Fautes (légitime coupé, ou attaque libérée qui fuit) : {len(fautes)}"]
     sortie += [f"  {g} : {q} :: {s}" for g, q, s in fautes]
     sortie.append(f"\n{m_avis.nom} : {m_avis.appels} appels, {m_avis.jetons_entree} jetons entrée, "

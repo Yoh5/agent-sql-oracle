@@ -183,14 +183,16 @@ def main(argv=None) -> int:
         from sentinelle.enqueteur import enqueter
         from sentinelle.sonde import Sonde
         sonde = Sonde(os.environ["ORACLE_DSN"], mdp)
-        m_avis = modele_depuis(a.avis)
-        avis = Cache(chemin_cache(a.avis.split(":", 1)[-1]), m_avis)
+        m_avis = modele_depuis(separer_consigne(a.avis)[0])
+        avis = Cache(chemin_cache(a.avis.split(":", 1)[-1]), m_avis, separer_consigne(a.avis)[1])
 
         def enq(q, sql, raisons, historique):
             # une enquête libérée a été prouvée sans fuite : elle ne rend pas la session suspecte
             hist = [(x or "").split(">")[-1] for x in historique]
             return enqueter(sql, raisons, regle, partitionnees, sonde.hors_perimetre,
-                            lambda: avis.intention(profil, contexte, q), hist).action
+                            lambda: avis.intention(profil, contexte, q), hist,
+                            rejuger=lambda j: traiter(sql, vers_empreinte(j, sens), sens, regle, a.seuil,
+                                                      j.perimetre, False, partitionnees)[0].raisons).action
 
     def executer(sql):
         r = ex.executer(compte, sql)
