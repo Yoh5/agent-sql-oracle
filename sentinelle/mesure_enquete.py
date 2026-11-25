@@ -107,7 +107,7 @@ def main(argv=None) -> int:
                 restes.update(d.raisons_restantes)
             if d.action == "liberer" and famille != "legitime":
                 r = ex.executer(compte_pour(PROFILS[profil], sans_barriere), sql)
-                if fuite(r.lignes, r.colonnes, v.emails_interdits(profil), v.ids_interdits(profil)):
+                if fuite(r.lignes, r.colonnes, v.emails_interdits(profil), v.ids_interdits(profil), sql):
                     fautes.append((genre, question, sql))
             if d.action == "couper" and famille == "legitime":
                 fautes.append((genre, question, sql))

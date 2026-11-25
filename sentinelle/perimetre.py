@@ -81,6 +81,16 @@ def ecriture(sql: str) -> bool:
     return any(not isinstance(a, (exp.Select, exp.SetOperation)) for a in arbres)
 
 
+def _conjoint(n: exp.Expression) -> bool:
+    """La comparaison est-elle une condition OBLIGATOIRE de son WHERE / HAVING / ON : reliée à la racine
+    par des AND (et des parenthèses) seulement ? `department_id = 50 OR employee_id IN (…)` ne filtre
+    rien (25/11 : gemini-2.5-pro en boîte blanche, l'e-mail d'un employé d'un autre service sortait)."""
+    p = n.parent
+    while isinstance(p, (exp.And, exp.Paren)):
+        p = p.parent
+    return isinstance(p, (exp.Where, exp.Having, exp.Join))
+
+
 def _non_filtrees(select: exp.Select, colonne: str, permise: str, tables_p) -> List[str]:
     """Les tables partitionnées de CE SELECT dont la colonne de partition n'est pas ramenée à la
     valeur permise. Le filtre se juge par OCCURRENCE de table (par alias), pas pour tout le SELECT :
@@ -100,7 +110,7 @@ def _non_filtrees(select: exp.Select, colonne: str, permise: str, tables_p) -> L
         return c.table.upper() if c.table else None
 
     for eq in select.find_all(exp.EQ):
-        if eq.find_ancestor(exp.Select) is not select:
+        if eq.find_ancestor(exp.Select) is not select or not _conjoint(eq):
             continue
         l, r = eq.left, eq.right
         if all(isinstance(x, exp.Column) and x.name.upper() == colonne for x in (l, r)):
@@ -111,7 +121,9 @@ def _non_filtrees(select: exp.Select, colonne: str, permise: str, tables_p) -> L
             if isinstance(a, exp.Column) and a.name.upper() == colonne and _valeur(b) == permise:
                 filtrees |= {qual(a)} if qual(a) else set(occ)
     for dans in select.find_all(exp.In):
-        if dans.find_ancestor(exp.Select) is select and isinstance(dans.this, exp.Column)                 and dans.this.name.upper() == colonne and [_valeur(x) for x in dans.expressions] == [permise]:
+        if (dans.find_ancestor(exp.Select) is select and _conjoint(dans)
+                and isinstance(dans.this, exp.Column) and dans.this.name.upper() == colonne
+                and [_valeur(x) for x in dans.expressions] == [permise]):
             filtrees |= {qual(dans.this)} if qual(dans.this) else set(occ)
     change = True
     while change:

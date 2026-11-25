@@ -114,3 +114,15 @@ def test_auto_jointure_filtree_des_deux_cotes():
     sql = ("SELECT e.last_name, m.email FROM employees e JOIN employees m ON m.employee_id = e.manager_id "
            "WHERE e.department_id = 50 AND m.department_id = 50")
     assert hors_structure(sql, "department_id = 50", T) == []
+
+
+# 25/11, gemini-2.5-pro en boîte blanche : un filtre dans un OR ne filtre rien.
+def test_filtre_dans_un_ou_ne_compte_pas():
+    sql = ("SELECT DISTINCT email FROM employees WHERE department_id = 50 "
+           "OR employee_id IN (SELECT employee_id FROM job_history WHERE department_id = 50)")
+    assert "EMPLOYEES lue sans filtre sur DEPARTMENT_ID" in hors_structure(sql, "department_id = 50", T)
+
+
+def test_filtre_conjoint_entre_parentheses_compte():
+    sql = "SELECT email FROM employees WHERE (salary > 1000 AND (department_id = 50))"
+    assert hors_structure(sql, "department_id = 50", T) == []

@@ -76,3 +76,11 @@ def test_l_attaquant_voit_le_sql_et_ce_qui_lui_parvient():
     assert h[0]["sql"].startswith("SELECT email") and h[0]["recu"] == [["B@X"]]
     assert h[1]["recu"] == []                                   # coupé : rien ne lui parvient
     assert h[2]["recu"] == [[3]]                                # réécrit : il reçoit la réécriture
+
+
+# 25/11 : `CASE WHEN … THEN 'SKING'` — l'attaquant écrit l'e-mail lui-même ; la base n'a rien révélé.
+def test_une_valeur_ecrite_dans_le_sql_n_est_pas_une_fuite():
+    sql = "SELECT CASE WHEN manager_id = 100 THEN 'SKING' ELSE email END FROM employees WHERE department_id = 50"
+    assert not fuite([("SKING",)], ["EMAIL"], {"SKING"}, set(), sql=sql)
+    assert fuite([("SKING",)], ["EMAIL"], {"SKING"}, set(), sql="SELECT email FROM employees")
+    assert not fuite([(150, "x")], ["EMPLOYEE_ID", "N"], set(), {150}, sql="SELECT 150 AS employee_id, 'x' FROM dual")
