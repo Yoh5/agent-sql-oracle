@@ -32,6 +32,19 @@ base Oracle.
    faux sur 8 (dont un piège NULL qui cache une ligne), 8 politiques justes après un rapport du
    juge, qui compare ligne par ligne ce que voit chaque compte.
 
+5. **En anglais, l'agent reste aussi utile (27/11/2026)** : les 90 questions légitimes traduites
+   (`borne/utilite_en.py`, mêmes vérités SQL, `python -m borne.campagne --langue en`) donnent
+   **87 à 90 / 90 (96-100 %)** dans les 8 configurations, pour gpt-oss-120b comme pour le 20b —
+   contre 86 à 90 / 90 en français ; l'écart par configuration ne dépasse jamais 2 questions.
+   Les attaques comptaient déjà une injection en anglais (`directe_traduction`).
+
+| utilité, questions justes / 90 | C1V1P1 | C1V1P0 | C1V0P1 | C1V0P0 | C0V1P1 | C0V1P0 | C0V0P1 | C0V0P0 |
+|---|---|---|---|---|---|---|---|---|
+| gpt-oss-120b, français | 90 | 89 | 90 | 88 | 90 | 86 | 89 | 89 |
+| gpt-oss-120b, anglais | 90 | 90 | 88 | 88 | 88 | 89 | 89 | 89 |
+| gpt-oss-20b, français | 89 | 89 | 89 | 88 | 88 | 89 | 89 | 88 |
+| gpt-oss-20b, anglais | 90 | 89 | 87 | 87 | 89 | 89 | 89 | 87 |
+
 Le détail, phase par phase, suit. Conception : `docs/superpowers/specs/2026-11-16-agent-sql-oracle-design.md`.
 
 ## Le banc validé avec le pire modèle (16/11/2026)

@@ -137,7 +137,15 @@ def main(argv=None) -> int:
     p.add_argument("--sortie", default="journal/campagne")
     p.add_argument("--adb", action="store_true",
                    help="tout le banc sur Autonomous Database Free (comparaison Select AI, borne/select_ai.py)")
+    p.add_argument("--langue", choices=("fr", "en"), default="fr",
+                   help="langue des 90 questions légitimes (en : borne/utilite_en.py, mêmes vérités)")
     a = p.parse_args(argv)
+    if a.langue == "en":
+        from borne.utilite_en import QUESTIONS_EN
+        questions = QUESTIONS_EN
+        a.sortie = a.sortie if a.sortie != "journal/campagne" else "journal/campagne_en"
+    else:
+        questions = QUESTIONS
     if a.adb:
         from borne.select_ai import rediriger_vers_adb
         rediriger_vers_adb()
@@ -151,7 +159,7 @@ def main(argv=None) -> int:
     ex = ExecuteurOracle(os.environ["ORACLE_DSN"], {c: mdp for c in ("MGR_50", "MGR_80", "RH_DIR", "HR_BAC")},
                          lire_audit=None if a.adb else v.derniere_entree_audit)  # pas d'audit sur ADB
     if a.modele == "factice-parfait":
-        modele_att, modele_util = modele_qui_cede(CATALOGUE), modele_parfait(QUESTIONS)
+        modele_att, modele_util = modele_qui_cede(CATALOGUE), modele_parfait(questions)
     elif a.modele == "factice-cede":
         modele_att = modele_util = modele_qui_cede(CATALOGUE)
     elif a.modele.startswith("selectai:"):
@@ -166,7 +174,7 @@ def main(argv=None) -> int:
     chemin = sortie / f"{nom}.jsonl"
     configs = preparer_reprise(chemin, a.configs,
                                0 if a.sans_attaques else a.repetitions * len(CATALOGUE),
-                               0 if a.sans_utilite else len(QUESTIONS))
+                               0 if a.sans_utilite else len(questions))
     if configs != list(a.configs):
         print(f"  reprise : déjà faites {sorted(set(a.configs) - set(configs))}", flush=True)
     journal: List[dict] = []
@@ -189,7 +197,7 @@ def main(argv=None) -> int:
             if not a.sans_utilite:
                 v.vpd(b.vpd)
                 try:
-                    lignes_cfg.extend(jouer_utilite(QUESTIONS, modele_util, b, ex, v))
+                    lignes_cfg.extend(jouer_utilite(questions, modele_util, b, ex, v))
                 finally:
                     v.vpd(True)
             pannes = [l for l in lignes_cfg if est_panne(l)]
